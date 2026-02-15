@@ -1,3 +1,7 @@
 package main
 
-func main() {}
+import "packeteer/cmd"
+
+func main() {
+	cmd.Execute()
+}
