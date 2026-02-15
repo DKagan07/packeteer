@@ -2,14 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
-	"time"
 
-	"github.com/charmbracelet/huh"
 	"github.com/gopacket/gopacket"
-	"github.com/gopacket/gopacket/layers"
 	"github.com/gopacket/gopacket/pcap"
 	"github.com/spf13/cobra"
+
+	"packeteer/internal/packet"
 )
 
 var (
@@ -28,7 +28,7 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		packet(cmd)
+		handleCmd(cmd)
 	},
 }
 
@@ -42,10 +42,6 @@ func Execute() {
 }
 
 func init() {
-	// Here you will define your flags and configuration settings.
-	// Cobra supports persistent flags, which, if defined here,
-	// will be global for your application.
-
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.packeteer.yaml)")
 
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
@@ -55,140 +51,40 @@ func init() {
 	rootCmd.Flags().StringVarP(&bpf, "bpf", "b", "", "set bpf filters")
 }
 
-func packet(cmd *cobra.Command) {
+func handleCmd(cmd *cobra.Command) {
 	search, err := cmd.Flags().GetBool("find-interfaces")
 	if err != nil {
-		// TODO: change this
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if search || device == "" {
-		selectInterface(&device)
-	}
-
-	if handle, err := pcap.OpenLive(device, 1600, true, pcap.BlockForever); err != nil {
-		panic(err)
-	} else {
-		if bpf != "" {
-			if err := handle.SetBPFFilter(bpf); err != nil {
-				panic(err)
-			}
-		}
-
-		n := 0
-		packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-		for packet := range packetSrc.Packets() {
-			fmt.Println("PACKET: ", n)
-			printPacketInfo(packet)
-			n++
+		device, err = packet.SelectInterface(pcap.FindAllDevs)
+		if err != nil {
+			log.Fatal(err)
 		}
 	}
-}
 
-func printPacketInfo(p gopacket.Packet) {
-	var (
-		ts       string
-		l        int
-		read     int
-		srcIP    string
-		srcPort  string
-		destIP   string
-		destPort string
-		t        string
-	)
-
-	md := p.Metadata()
-	ts = md.Timestamp.Format(time.RFC3339)
-	l = md.Length
-	read = md.CaptureLength
-
-	ls := p.Layers()
-	for _, l := range ls {
-		switch l.LayerType() {
-		case layers.LayerTypeEthernet:
-			t = "ETH"
-			// 	eth := l.(*layers.Ethernet)
-
-		case layers.LayerTypeIPv4:
-			ip4 := l.(*layers.IPv4)
-			srcIP = ip4.SrcIP.String()
-			destIP = ip4.DstIP.String()
-			t = "IPv4"
-
-		case layers.LayerTypeIPv6:
-			ip6 := l.(*layers.IPv6)
-			srcIP = ip6.SrcIP.String()
-			destIP = ip6.DstIP.String()
-			t = "IPv6"
-
-		case layers.LayerTypeTCP:
-			tcp := l.(*layers.TCP)
-			srcPort = tcp.SrcPort.String()
-			destPort = tcp.DstPort.String()
-			t = "TCP"
-
-		case layers.LayerTypeUDP:
-			udp := l.(*layers.UDP)
-			srcPort = udp.SrcPort.String()
-			destPort = udp.DstPort.String()
-			t = "UDP"
-
-		case layers.LayerTypeICMPv4:
-			t = "ICMPv4"
-			// 	icmp4 := l.(*layers.ICMPv4)
-
-		case layers.LayerTypeICMPv6:
-			t = "ICMPv6"
-			// icmp6 := l.(*layers.ICMPv6)
-
-		case layers.LayerTypeTLS:
-			t = "TLS"
-			// tls := l.(*layers.TLS)
-
-		case layers.LayerTypeARP:
-			t = "ARP"
-			// arp := l.(*layers.ARP)
-		}
-	}
-	fmt.Printf(
-		"%s | length %v read: %v | %s src: %s:%s, dst: %s:%s",
-		ts,
-		l,
-		read,
-		t,
-		srcIP,
-		srcPort,
-		destIP,
-		destPort,
-	)
-	fmt.Println()
-}
-
-func selectInterface(device *string) {
-	ifaces, err := pcap.FindAllDevs()
+	handle, err := pcap.OpenLive(device, 1600, true, pcap.BlockForever)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	var names []string
-	for _, f := range ifaces {
-		if len(f.Addresses) > 0 {
-			names = append(names, f.Name)
+	if bpf != "" {
+		if err := handle.SetBPFFilter(bpf); err != nil {
+			log.Fatal(err)
 		}
 	}
 
-	form := huh.NewForm(
-		huh.NewGroup(
-			huh.NewSelect[string]().
-				Title("Select a Interface").
-				OptionsFunc(func() []huh.Option[string] {
-					return huh.NewOptions(names...)
-				}, device).
-				Value(device).
-				Height(10),
-		),
-	)
-	if err := form.Run(); err != nil {
-		panic(err)
+	n := 0
+	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
+	for p := range packetSrc.Packets() {
+		pi := packet.ExtractPacketInfo(p)
+		if pi == nil {
+			log.Fatal("PacketInfo is nil")
+		}
+
+		fmt.Printf("PACKET: %d | ", n)
+		packet.PrintPacketInfo(pi)
+		n++
 	}
 }
