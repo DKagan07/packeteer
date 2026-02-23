@@ -5,7 +5,8 @@ import (
 )
 
 // PrintPacketInfo takes a *PacketInfo and nicely prints it to stdout
-func PrintPacketInfo(pi *PacketInfo) {
+func PrintPacketInfo(pi *PacketInfo, packetNum int) {
+	fmt.Printf("PACKET: %d | ", packetNum)
 	fmt.Printf(
 		"%s | length %v read: %v | %s src: %s:%s, dst: %s:%s",
 		pi.Timestamp,

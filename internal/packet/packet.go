@@ -8,29 +8,47 @@ import (
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/layers"
 	"github.com/gopacket/gopacket/pcap"
+
+	"packeteer/internal/dns"
 )
 
 // PacketInfo is a neat little struct that has the important gopacket.Packet
 // info needed for current functionalities
 type PacketInfo struct {
-	Timestamp     string
+	Timestamp     time.Time
 	Length        int
 	CaptureLength int
 	SrcIP         string
 	SrcPort       string
 	DestIP        string
 	DestPort      string
-	Protocol      string
+	Protocol      PacketProtocol
 }
+
+type PacketProtocol string
+
+var (
+	ETH    PacketProtocol = "ETH"
+	DNS    PacketProtocol = "DNS"
+	IPv4   PacketProtocol = "IPv4"
+	IPv6   PacketProtocol = "IPv6"
+	TCP    PacketProtocol = "TCP"
+	UDP    PacketProtocol = "UDP"
+	ICMPv4 PacketProtocol = "ICMPv4"
+	ICMPv6 PacketProtocol = "ICMPv6"
+	TLS    PacketProtocol = "TLS"
+	ARP    PacketProtocol = "ARP"
+)
 
 // ExtractPacketInfo extracts all the information into an instance of a
 // PacketInfo. This function can return nil if all the fields in the PacketInfo
 // are falsy
-func ExtractPacketInfo(p gopacket.Packet) *PacketInfo {
+func ExtractPacketInfo(p gopacket.Packet) (*PacketInfo, *dns.DNSInfo) {
 	pi := &PacketInfo{}
+	dnsInfo := &dns.DNSInfo{}
 
 	md := p.Metadata()
-	pi.Timestamp = md.Timestamp.Format(time.RFC3339)
+	pi.Timestamp = md.Timestamp
 	pi.Length = md.Length
 	pi.CaptureLength = md.CaptureLength
 
@@ -38,56 +56,63 @@ func ExtractPacketInfo(p gopacket.Packet) *PacketInfo {
 	for _, l := range ls {
 		switch l.LayerType() {
 		case layers.LayerTypeEthernet:
-			pi.Protocol = "ETH"
+			pi.Protocol = ETH
 			// 	eth := l.(*layers.Ethernet)
 
 		case layers.LayerTypeIPv4:
 			ip4 := l.(*layers.IPv4)
 			pi.SrcIP = ip4.SrcIP.String()
 			pi.DestIP = ip4.DstIP.String()
-			pi.Protocol = "IPv4"
+			pi.Protocol = IPv4
 
 		case layers.LayerTypeIPv6:
 			ip6 := l.(*layers.IPv6)
 			pi.SrcIP = ip6.SrcIP.String()
 			pi.DestIP = ip6.DstIP.String()
-			pi.Protocol = "IPv6"
+			pi.Protocol = IPv6
+
+		case layers.LayerTypeDNS:
+			pi.Protocol = DNS
+			dnsInfo = dns.DecodeDNSPacket(l, pi.SrcIP, md.Timestamp.Format(time.RFC3339))
 
 		case layers.LayerTypeTCP:
 			tcp := l.(*layers.TCP)
 			pi.SrcPort = tcp.SrcPort.String()
 			pi.DestPort = tcp.DstPort.String()
-			pi.Protocol = "TCP"
+			pi.Protocol = TCP
 
 		case layers.LayerTypeUDP:
 			udp := l.(*layers.UDP)
 			pi.SrcPort = udp.SrcPort.String()
 			pi.DestPort = udp.DstPort.String()
-			pi.Protocol = "UDP"
+			pi.Protocol = UDP
 
 		case layers.LayerTypeICMPv4:
-			pi.Protocol = "ICMPv4"
+			pi.Protocol = ICMPv4
 			// 	icmp4 := l.(*layers.ICMPv4)
 
 		case layers.LayerTypeICMPv6:
-			pi.Protocol = "ICMPv6"
+			pi.Protocol = ICMPv6
 			// icmp6 := l.(*layers.ICMPv6)
 
 		case layers.LayerTypeTLS:
-			pi.Protocol = "TLS"
+			pi.Protocol = TLS
 			// tls := l.(*layers.TLS)
 
 		case layers.LayerTypeARP:
-			pi.Protocol = "ARP"
+			pi.Protocol = ARP
 			// arp := l.(*layers.ARP)
 		}
 	}
 
 	if isPacketInfoNil(pi) {
-		return nil
+		if dnsInfo == nil {
+			return nil, nil
+		}
+		return nil, dnsInfo
 	}
 
-	return pi
+	return pi, dnsInfo
 }
 
 // SelectInterface wraps a Charmbracelet Huh selection for the user to pick a
@@ -133,7 +158,7 @@ func filterNetworkInterfaces(ifaces []pcap.Interface) []string {
 
 // isPacketInfoNil will return nil if all the fields within PacketInfo are falsy
 func isPacketInfoNil(p *PacketInfo) bool {
-	return p.Timestamp == "" &&
+	return p.Timestamp.Equal(time.Time{}) &&
 		p.CaptureLength == 0 &&
 		p.Length == 0 &&
 		p.SrcIP == "" &&

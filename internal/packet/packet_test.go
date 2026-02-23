@@ -35,12 +35,12 @@ func TestExtractPacketInfo_Metadata(t *testing.T) {
 	testPacket.Metadata().Length = l
 	testPacket.Metadata().Timestamp = now
 
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("ETH", pi.Protocol)
+	assert.Equal(PacketProtocol("ETH"), pi.Protocol)
 	assert.Equal(l, pi.Length)
 	assert.Equal(l, pi.CaptureLength)
-	assert.Equal(now.Format(time.RFC3339), pi.Timestamp)
+	assert.Equal(now, pi.Timestamp)
 }
 
 func TestExtractPacketInfo_Ethernet(t *testing.T) {
@@ -56,9 +56,9 @@ func TestExtractPacketInfo_Ethernet(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("ETH", pi.Protocol)
+	assert.Equal(PacketProtocol("ETH"), pi.Protocol)
 }
 
 func TestExtractPacketInfo_IPv4(t *testing.T) {
@@ -81,9 +81,9 @@ func TestExtractPacketInfo_IPv4(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("IPv4", pi.Protocol)
+	assert.Equal(PacketProtocol("IPv4"), pi.Protocol)
 	assert.Equal("192.168.0.1", pi.SrcIP)
 	assert.Equal("192.168.0.2", pi.DestIP)
 }
@@ -106,9 +106,9 @@ func TestExtractPacket_IPv6(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("IPv6", pi.Protocol)
+	assert.Equal(PacketProtocol("IPv6"), pi.Protocol)
 	assert.Equal("192.168.0.1", pi.SrcIP)
 	assert.Equal("192.168.0.2", pi.DestIP)
 }
@@ -138,9 +138,9 @@ func TestExtractPacketInfo_TCP_IPv6(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("TCP", pi.Protocol)
+	assert.Equal(PacketProtocol("TCP"), pi.Protocol)
 	assert.Equal("192.168.0.1", pi.SrcIP)
 	assert.Equal("192.168.0.2", pi.DestIP)
 	assert.Equal("54321", pi.SrcPort)
@@ -172,9 +172,9 @@ func TestExtractPacketInfo_TCP_IPv4(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("TCP", pi.Protocol)
+	assert.Equal(PacketProtocol("TCP"), pi.Protocol)
 	assert.Equal("192.168.0.1", pi.SrcIP)
 	assert.Equal("192.168.0.2", pi.DestIP)
 	assert.Equal("54321", pi.SrcPort)
@@ -206,9 +206,9 @@ func TestExtractPacketInfo_UDP(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("UDP", pi.Protocol)
+	assert.Equal(PacketProtocol("UDP"), pi.Protocol)
 	assert.Equal("192.168.0.1", pi.SrcIP)
 	assert.Equal("192.168.0.2", pi.DestIP)
 	assert.Equal("54321", pi.SrcPort)
@@ -239,9 +239,9 @@ func TestExtractPacketInfo_ICMPv4(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("ICMPv4", pi.Protocol)
+	assert.Equal(PacketProtocol("ICMPv4"), pi.Protocol)
 }
 
 func TestExtractPacketInfo_ICMPv6(t *testing.T) {
@@ -266,9 +266,9 @@ func TestExtractPacketInfo_ICMPv6(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("ICMPv6", pi.Protocol)
+	assert.Equal(PacketProtocol("ICMPv6"), pi.Protocol)
 }
 
 func TestExtractPacketInfo_ARP(t *testing.T) {
@@ -288,9 +288,9 @@ func TestExtractPacketInfo_ARP(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("ARP", pi.Protocol)
+	assert.Equal(PacketProtocol("ARP"), pi.Protocol)
 }
 
 func TestExtractPacketInfo_TLS(t *testing.T) {
@@ -299,9 +299,9 @@ func TestExtractPacketInfo_TLS(t *testing.T) {
 	// TLS ChangeCipherSpec record: type 0x14, version TLS 1.2, length 1, payload 0x01
 	tlsRecord := []byte{0x14, 0x03, 0x03, 0x00, 0x01, 0x01}
 	testPacket := gopacket.NewPacket(tlsRecord, layers.LayerTypeTLS, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
+	pi, _ := ExtractPacketInfo(testPacket)
 	assert.NotEmpty(pi)
-	assert.Equal("TLS", pi.Protocol)
+	assert.Equal(PacketProtocol("TLS"), pi.Protocol)
 }
 
 func TestExtractPacketInfo_Empty(t *testing.T) {
@@ -313,12 +313,52 @@ func TestExtractPacketInfo_Empty(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
-	pi := ExtractPacketInfo(testPacket)
-	assert.Empty(pi.DestPort)
-	assert.Empty(pi.SrcPort)
-	assert.Empty(pi.DestIP)
-	assert.Empty(pi.SrcIP)
-	assert.Empty(pi.Protocol)
+	pi, _ := ExtractPacketInfo(testPacket)
+	assert.Nil(pi)
+}
+
+func TestExtractPacketInfo_DNS(t *testing.T) {
+	assert := assert.New(t)
+
+	buf := gopacket.NewSerializeBuffer()
+	gopacket.SerializeLayers(buf,
+		gopacket.SerializeOptions{},
+		&layers.Ethernet{
+			SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			DstMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			EthernetType: layers.EthernetTypeARP,
+		},
+		&layers.DNS{
+			Questions: []layers.DNSQuestion{
+				{
+					Name: []byte{
+						108,
+						105,
+						118,
+						101,
+						46,
+						103,
+						105,
+						116,
+						104,
+						117,
+						98,
+						46,
+						99,
+						111,
+						109,
+					},
+					Type:  layers.DNSTypeAAAA,
+					Class: layers.DNSClassIN,
+				},
+			},
+		},
+	)
+
+	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeDNS, gopacket.Default)
+	_, dnsInfo := ExtractPacketInfo(testPacket)
+	assert.NotNil(dnsInfo)
+	assert.NotEmpty(dnsInfo.Time)
 }
 
 // ******************************
@@ -353,7 +393,7 @@ func TestFilterNetworkInterfaces(t *testing.T) {
 
 func TestIsPacketInfoNil_False_Timestamp(t *testing.T) {
 	assert.False(t, isPacketInfoNil(&PacketInfo{
-		Timestamp: "2026-01-01T00:00:00Z",
+		Timestamp: time.Now(),
 	}))
 }
 
@@ -395,7 +435,7 @@ func TestIsPacketInfoNil_False_DestPort(t *testing.T) {
 
 func TestIsPacketInfoNil_False_Protocol(t *testing.T) {
 	assert.False(t, isPacketInfoNil(&PacketInfo{
-		Protocol: "TCP",
+		Protocol: PacketProtocol("TCP"),
 	}))
 }
 
