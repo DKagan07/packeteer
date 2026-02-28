@@ -10,6 +10,7 @@ import (
 	"packeteer/internal/storage"
 )
 
+// DNSInfo contains structured info from a DNS packet
 type DNSInfo struct {
 	Time        string
 	SrcIP       string
@@ -18,6 +19,7 @@ type DNSInfo struct {
 	CNAMEPath   string
 	ResponseIPs []string
 	RequestType RequestType
+	TxnId       uint16
 }
 
 type RequestType string
@@ -35,6 +37,7 @@ func DecodeDNSPacket(l gopacket.Layer, srcIP, timestamp string) *DNSInfo {
 	dnsInfo := &DNSInfo{
 		Time:  timestamp,
 		SrcIP: srcIP,
+		TxnId: dnsLayer.ID,
 	}
 
 	HandleDNSQuestions(dnsLayer, dnsInfo)
@@ -92,5 +95,6 @@ func InsertDNSInfo(dnsInfo *DNSInfo, sqldb *sql.DB) error {
 		dnsInfo.CNAMEPath,
 		responseIPs,
 		string(dnsInfo.RequestType),
+		dnsInfo.TxnId,
 	)
 }

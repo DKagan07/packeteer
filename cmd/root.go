@@ -1,41 +1,34 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"path"
 
-	"github.com/gopacket/gopacket"
-	"github.com/gopacket/gopacket/pcap"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"packeteer/internal/dns"
-	"packeteer/internal/packet"
 	"packeteer/internal/storage"
 )
 
-var (
-	device  string
-	bpf     string
-	cfgFile string
-
-	homeDir, _ = os.UserHomeDir()
-)
+var db *sql.DB
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "packeteer",
 	Short: "packet sniffer",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		handleCmd(cmd)
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Set up DB
+		var err error
+		db, err = storage.OpenDb(viper.GetString("db_path"))
+		if err != nil {
+			log.Fatalf("error opening db: %v", err)
+		}
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		db.Close()
 	},
 }
 
@@ -74,58 +67,5 @@ func initConfig() {
 		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
 			log.Fatal(err)
 		}
-	}
-}
-
-func handleCmd(cmd *cobra.Command) {
-	// Set up DB
-	db, err := storage.OpenDb(viper.GetString("db_path"))
-	if err != nil {
-		log.Fatalf("error opening db: %v", err)
-	}
-	defer db.Close()
-
-	// Get interface to sniff
-	search, err := cmd.Flags().GetBool("find-interfaces")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if search || device == "" {
-		device, err = packet.SelectInterface(pcap.FindAllDevs)
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Open connection
-	handle, err := pcap.OpenLive(device, 1600, true, pcap.BlockForever)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if bpf != "" {
-		if err := handle.SetBPFFilter(bpf); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// Packet processing
-	n := 0
-	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-	for p := range packetSrc.Packets() {
-		pi, dnsInfo := packet.ExtractPacketInfo(p)
-		if pi == nil {
-			log.Fatal("PacketInfo is nil")
-		}
-
-		if dnsInfo != nil {
-			if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
-				log.Fatalf("inserting into dns table: %v", err)
-			}
-		}
-
-		packet.PrintPacketInfo(pi, n)
-		n++
 	}
 }

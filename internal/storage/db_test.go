@@ -53,6 +53,7 @@ func TestInsertDNSEntry(t *testing.T) {
 		"",
 		"1.2.3.4",
 		"query",
+		123,
 	)
 	assert.NoError(t, err)
 }
@@ -71,12 +72,14 @@ func TestInsertDNSEntry_VerifyFields(t *testing.T) {
 		"cdn.example.com,",
 		"1.2.3.4",
 		"response",
+		456,
 	)
 	require.NoError(t, err)
 
 	var timestamp, srcIP, queryName, queryType, cnamePath, responseIPs, requestType string
+	var event uint16
 	row := db.QueryRow(
-		"SELECT timestamp, source_ip, query_name, query_type, cname_path, response_ips, request_type FROM dns_queries LIMIT 1",
+		"SELECT timestamp, source_ip, query_name, query_type, cname_path, response_ips, request_type, event FROM dns_queries LIMIT 1",
 	)
 	err = row.Scan(
 		&timestamp,
@@ -86,6 +89,7 @@ func TestInsertDNSEntry_VerifyFields(t *testing.T) {
 		&cnamePath,
 		&responseIPs,
 		&requestType,
+		&event,
 	)
 	require.NoError(t, err)
 
@@ -96,6 +100,7 @@ func TestInsertDNSEntry_VerifyFields(t *testing.T) {
 	assert.Equal(t, "cdn.example.com,", cnamePath)
 	assert.Equal(t, "1.2.3.4", responseIPs)
 	assert.Equal(t, "response", requestType)
+	assert.Equal(t, uint16(456), event)
 }
 
 func TestInsertDNSEntry_MultipleEntries(t *testing.T) {
@@ -104,9 +109,16 @@ func TestInsertDNSEntry_MultipleEntries(t *testing.T) {
 	defer db.Close()
 
 	entries := []struct {
-		time, srcIP, queryName, queryType, cnamePath, responseIPs, requestType string
+		time        string
+		srcIP       string
+		queryName   string
+		queryType   string
+		cnamePath   string
+		responseIPs string
+		requestType string
+		event       uint16
 	}{
-		{"2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "1.2.3.4", "query"},
+		{"2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "1.2.3.4", "query", 1},
 		{
 			"2024-01-01 00:00:01",
 			"192.168.0.2",
@@ -115,6 +127,7 @@ func TestInsertDNSEntry_MultipleEntries(t *testing.T) {
 			"",
 			"2001:4860:4860::8888",
 			"query",
+			2,
 		},
 		{
 			"2024-01-01 00:00:02",
@@ -124,6 +137,7 @@ func TestInsertDNSEntry_MultipleEntries(t *testing.T) {
 			"example.com,cdn.example.com,",
 			"5.6.7.8",
 			"response",
+			3,
 		},
 	}
 
@@ -137,6 +151,7 @@ func TestInsertDNSEntry_MultipleEntries(t *testing.T) {
 			e.cnamePath,
 			e.responseIPs,
 			e.requestType,
+			e.event,
 		)
 		assert.NoError(t, err)
 	}
@@ -153,6 +168,16 @@ func TestInsertDNSEntry_EmptyOptionalFields(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "10.0.0.1", "example.com", "A", "", "", "query")
+	err = InsertDNSEntry(
+		db,
+		"2024-01-01 00:00:00",
+		"10.0.0.1",
+		"example.com",
+		"A",
+		"",
+		"",
+		"query",
+		2,
+	)
 	assert.NoError(t, err)
 }

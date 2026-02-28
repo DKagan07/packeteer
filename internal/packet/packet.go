@@ -45,7 +45,7 @@ var (
 // are falsy
 func ExtractPacketInfo(p gopacket.Packet) (*PacketInfo, *dns.DNSInfo) {
 	pi := &PacketInfo{}
-	dnsInfo := &dns.DNSInfo{}
+	var dnsInfo *dns.DNSInfo
 
 	md := p.Metadata()
 	pi.Timestamp = md.Timestamp
