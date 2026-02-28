@@ -153,6 +153,7 @@ func TestDecodeDNSPacket_Query(t *testing.T) {
 	assert := assert.New(t)
 
 	dl := &layers.DNS{
+		ID: 123,
 		QR: false,
 		Questions: []layers.DNSQuestion{
 			{Name: []byte("example.com"), Type: layers.DNSTypeA},
@@ -168,6 +169,7 @@ func TestDecodeDNSPacket_Query(t *testing.T) {
 	assert.Equal("A", info.QueryType)
 	assert.Empty(info.ResponseIPs)
 	assert.Equal(Query, info.RequestType)
+	assert.Equal(uint16(123), info.TxnId)
 }
 
 func TestDecodeDNSPacket_Response(t *testing.T) {
@@ -191,12 +193,14 @@ func TestDecodeDNSPacket_Response(t *testing.T) {
 	require.Len(t, info.ResponseIPs, 1)
 	assert.Equal("1.2.3.4", info.ResponseIPs[0])
 	assert.Equal(Response, info.RequestType)
+	assert.Equal(uint16(0), info.TxnId)
 }
 
 func TestDecodeDNSPacket_ResponseWithCNAME(t *testing.T) {
 	assert := assert.New(t)
 
 	dl := &layers.DNS{
+		ID:      1,
 		QR:      true,
 		ANCount: 2,
 		Questions: []layers.DNSQuestion{
@@ -214,12 +218,14 @@ func TestDecodeDNSPacket_ResponseWithCNAME(t *testing.T) {
 	assert.Contains(info.CNAMEPath, "cdn.example.com")
 	assert.Contains(info.ResponseIPs, "1.2.3.4")
 	assert.Equal(Response, info.RequestType)
+	assert.Equal(uint16(1), info.TxnId)
 }
 
 func TestDecodeDNSPacket_NoAnswers(t *testing.T) {
 	assert := assert.New(t)
 
 	dl := &layers.DNS{
+		ID:      1,
 		QR:      false,
 		ANCount: 0,
 		Questions: []layers.DNSQuestion{
@@ -233,6 +239,7 @@ func TestDecodeDNSPacket_NoAnswers(t *testing.T) {
 	assert.Empty(info.ResponseIPs)
 	assert.Empty(info.CNAMEPath)
 	assert.Equal(Query, info.RequestType)
+	assert.Equal(uint16(1), info.TxnId)
 }
 
 // ******************************
@@ -251,6 +258,7 @@ func TestInsertDNSInfo(t *testing.T) {
 		QueryType:   "A",
 		CNAMEPath:   "",
 		ResponseIPs: []string{"1.2.3.4"},
+		TxnId:       1,
 	}
 
 	err = InsertDNSInfo(info, db)
@@ -269,6 +277,7 @@ func TestInsertDNSInfo_MultipleIPs(t *testing.T) {
 		QueryType:   "A",
 		CNAMEPath:   "cdn.example.com,",
 		ResponseIPs: []string{"1.2.3.4", "5.6.7.8"},
+		TxnId:       1,
 	}
 
 	err = InsertDNSInfo(info, db)
@@ -286,6 +295,7 @@ func TestInsertDNSInfo_EmptyResponseIPs(t *testing.T) {
 		QueryName:   "example.com",
 		QueryType:   "A",
 		ResponseIPs: []string{},
+		TxnId:       1,
 	}
 
 	err = InsertDNSInfo(info, db)

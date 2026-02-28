@@ -181,3 +181,147 @@ func TestInsertDNSEntry_EmptyOptionalFields(t *testing.T) {
 	)
 	assert.NoError(t, err)
 }
+
+// ******************************
+// GetMostQueriedDomains
+// ******************************
+
+func TestGetMostQueriedDomains_Empty(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	results, err := GetMostQueriedDomains(db)
+	assert.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+func TestGetMostQueriedDomains_Basic(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "", "query", 1)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:01", "192.168.0.1", "example.com", "A", "", "", "query", 2)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:02", "192.168.0.1", "google.com", "A", "", "", "query", 3)
+	require.NoError(t, err)
+
+	results, err := GetMostQueriedDomains(db)
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.Equal(t, "example.com", results[0].QueryName)
+	assert.Equal(t, 2, results[0].Count)
+	assert.Equal(t, "google.com", results[1].QueryName)
+	assert.Equal(t, 1, results[1].Count)
+}
+
+func TestGetMostQueriedDomains_ExcludesResponses(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "1.2.3.4", "response", 1)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:01", "192.168.0.1", "google.com", "A", "", "", "query", 2)
+	require.NoError(t, err)
+
+	results, err := GetMostQueriedDomains(db)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Equal(t, "google.com", results[0].QueryName)
+}
+
+func TestGetMostQueriedDomains_EventsConcatenated(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "", "query", 10)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:01", "192.168.0.1", "example.com", "A", "", "", "query", 20)
+	require.NoError(t, err)
+
+	results, err := GetMostQueriedDomains(db)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	assert.Contains(t, results[0].Events, "10")
+	assert.Contains(t, results[0].Events, "20")
+	assert.Equal(t, 2, results[0].Count)
+}
+
+func TestGetMostQueriedDomains_OrderedByCountDesc(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	for i := range 3 {
+		err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "top.com", "A", "", "", "query", uint16(i))
+		require.NoError(t, err)
+	}
+	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "middle.com", "A", "", "", "query", 10)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:01", "192.168.0.1", "middle.com", "A", "", "", "query", 11)
+	require.NoError(t, err)
+	err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "bottom.com", "A", "", "", "query", 20)
+	require.NoError(t, err)
+
+	results, err := GetMostQueriedDomains(db)
+	require.NoError(t, err)
+	require.Len(t, results, 3)
+	assert.Equal(t, "top.com", results[0].QueryName)
+	assert.Equal(t, "middle.com", results[1].QueryName)
+	assert.Equal(t, "bottom.com", results[2].QueryName)
+}
+
+// ******************************
+// GetDNSEntries
+// ******************************
+
+func TestGetDNSEntries_Empty(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	entries, err := GetDNSEntries(db)
+	assert.NoError(t, err)
+	assert.Empty(t, entries)
+}
+
+func TestGetDNSEntries_VerifyFields(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertDNSEntry(db, "2024-01-01T00:00:00Z", "192.168.0.1", "example.com", "A", "cdn.example.com,", "1.2.3.4", "query", 42)
+	require.NoError(t, err)
+
+	entries, err := GetDNSEntries(db)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+
+	e := entries[0]
+	assert.Equal(t, "192.168.0.1", e.SourceIP)
+	assert.Equal(t, "example.com", e.QueryName)
+	assert.Equal(t, "A", e.QueryType)
+	assert.Equal(t, "cdn.example.com,", e.CNamePath)
+	assert.Equal(t, "1.2.3.4", e.ResponseIPs)
+	assert.Equal(t, "query", e.RequestType)
+	assert.Equal(t, uint16(42), e.TxnId)
+}
+
+func TestGetDNSEntries_MultipleEntries(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	for i := range 3 {
+		err = InsertDNSEntry(db, "2024-01-01 00:00:00", "192.168.0.1", "example.com", "A", "", "", "query", uint16(i+1))
+		require.NoError(t, err)
+	}
+
+	entries, err := GetDNSEntries(db)
+	require.NoError(t, err)
+	assert.Len(t, entries, 3)
+}
