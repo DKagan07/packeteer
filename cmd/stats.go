@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -30,7 +31,8 @@ func init() {
 
 // GetStats will pretty-print stats depending on the flag used
 func GetStats(cmd *cobra.Command, args []string) {
-	if mqf, _ := cmd.Flags().GetBool("most-queried"); mqf {
+	mqf, _ := cmd.Flags().GetBool("most-queried")
+	if mqf {
 		domains, err := storage.GetMostQueriedDomains(db)
 		if err != nil {
 			log.Fatal(err)
@@ -40,12 +42,31 @@ func GetStats(cmd *cobra.Command, args []string) {
 		output.PrintMostQueriedDomains(domains)
 	}
 
-	if otf, _ := cmd.Flags().GetBool("over-time"); otf {
-		storage.GetQueriesOverTime(db)
+	otf, _ := cmd.Flags().GetBool("over-time")
+	if otf {
+		ots, err := storage.GetQueriesOverTime(db)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if mqf {
+			fmt.Println()
+		}
+
+		output.PrintQueriesOverTime(ots)
 	}
 
 	if uf, _ := cmd.Flags().GetBool("unique"); uf {
-		storage.GetUniqueDomains(db)
+		dqs, err := storage.GetUniqueDomains(db)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		if mqf || otf {
+			fmt.Println()
+		}
+
+		output.PrintUniqueDomains(dqs)
 	}
 
 	// _, err := storage.GetDNSEntries(db)

@@ -48,6 +48,36 @@ func PrintMostQueriedDomains(mqd []storage.DNSMostQueriedDomain) {
 	fmt.Println(strings.Repeat("*", 40))
 }
 
-func PrintQueriesOverTime() {}
+func PrintQueriesOverTime(ots []storage.DNSOverTime) {
+	fmt.Println(strings.Repeat("*", 40))
+	fmt.Println("\tQueries Over Time (in mins)")
+	fmt.Println(strings.Repeat("*", 40))
 
-func PrintUniqueDomains() {}
+	w := tabwriter.NewWriter(os.Stdout, 3, 4, 1, ' ', 0)
+	for _, t := range ots {
+		fmt.Fprintf(w, "Time: %v\t|\tNum of Queries: %v\n", t.Timestamp, t.Count)
+	}
+	w.Flush()
+
+	fmt.Println(strings.Repeat("*", 40))
+}
+
+func PrintUniqueDomains(dqs []storage.DNSDistinctQuery) {
+	fmt.Println(strings.Repeat("*", 40))
+	fmt.Println("\tDistinct Queries per Source IP")
+	fmt.Println(strings.Repeat("*", 40))
+
+	w := tabwriter.NewWriter(os.Stdout, 3, 4, 1, ' ', 0)
+	for _, d := range dqs {
+		fmt.Fprintf(
+			w,
+			"Source IP: %v\t|\tQuery: %v\t|\tRequest Type: %v\n",
+			d.SourceIP,
+			d.QueryName,
+			d.RequestType,
+		)
+	}
+	w.Flush()
+
+	fmt.Println(strings.Repeat("*", 40))
+}

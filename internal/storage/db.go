@@ -14,6 +14,17 @@ type DNSMostQueriedDomain struct {
 	Count     int
 }
 
+type DNSOverTime struct {
+	Timestamp string
+	Count     int
+}
+
+type DNSDistinctQuery struct {
+	SourceIP    string
+	QueryName   string
+	RequestType string
+}
+
 type DNSEntry struct {
 	Id          int
 	Timestamp   time.Time
@@ -123,12 +134,51 @@ func GetMostQueriedDomains(sqlDb *sql.DB) ([]DNSMostQueriedDomain, error) {
 	return mqd, nil
 }
 
-func GetQueriesOverTime(sqlDb *sql.DB) error {
-	return nil
+func GetQueriesOverTime(sqlDb *sql.DB) ([]DNSOverTime, error) {
+	rows, err := sqlDb.Query(`SELECT strftime('%Y-%m-%d %H:%M', timestamp) as hour,
+		COUNT(*) as query_count
+		FROM dns_queries
+		GROUP BY hour
+		ORDER BY hour
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	var ots []DNSOverTime
+
+	for rows.Next() {
+		var ot DNSOverTime
+		if err := rows.Scan(&ot.Timestamp, &ot.Count); err != nil {
+			return nil, err
+		}
+
+		ots = append(ots, ot)
+	}
+
+	return ots, nil
 }
 
-func GetUniqueDomains(sqlDb *sql.DB) error {
-	return nil
+func GetUniqueDomains(sqlDb *sql.DB) ([]DNSDistinctQuery, error) {
+	rows, err := sqlDb.Query(`SELECT
+		DISTINCT source_ip, query_name, request_type
+		FROM dns_queries
+	`)
+	if err != nil {
+		return nil, err
+	}
+
+	var dqs []DNSDistinctQuery
+	for rows.Next() {
+		var dq DNSDistinctQuery
+		if err := rows.Scan(&dq.SourceIP, &dq.QueryName, &dq.RequestType); err != nil {
+			return nil, err
+		}
+
+		dqs = append(dqs, dq)
+	}
+
+	return dqs, nil
 }
 
 // GetDNSEntries wraps a 'SELECT *' statement for the dns_queries table
