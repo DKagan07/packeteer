@@ -23,6 +23,17 @@ type PacketInfo struct {
 	DestIP        string
 	DestPort      string
 	Protocol      PacketProtocol
+
+	TCPFlags TCPFlags
+}
+
+// TCPFlags is a struct that contains TCP-specific flags
+type TCPFlags struct {
+	SYN bool
+	ACK bool
+	FIN bool
+	RST bool
+	PSH bool
 }
 
 type PacketProtocol string
@@ -80,6 +91,11 @@ func ExtractPacketInfo(p gopacket.Packet) (*PacketInfo, *dns.DNSInfo) {
 			pi.SrcPort = tcp.SrcPort.String()
 			pi.DestPort = tcp.DstPort.String()
 			pi.Protocol = TCP
+			pi.TCPFlags.ACK = tcp.ACK
+			pi.TCPFlags.SYN = tcp.SYN
+			pi.TCPFlags.PSH = tcp.PSH
+			pi.TCPFlags.RST = tcp.RST
+			pi.TCPFlags.FIN = tcp.FIN
 
 		case layers.LayerTypeUDP:
 			udp := l.(*layers.UDP)

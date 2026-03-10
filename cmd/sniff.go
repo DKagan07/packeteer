@@ -8,6 +8,7 @@ import (
 	"github.com/gopacket/gopacket/pcap"
 	"github.com/spf13/cobra"
 
+	"packeteer/internal/conntrack"
 	"packeteer/internal/dns"
 	"packeteer/internal/output"
 	"packeteer/internal/packet"
@@ -33,14 +34,21 @@ var sniffCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(sniffCmd)
 
-	sniffCmd.Flags().BoolP("find-interfaces", "i", false, "")
+	sniffCmd.Flags().BoolP("find-interfaces", "i", false, "show available interfaces")
 	sniffCmd.Flags().StringVarP(&device, "device", "d", "", "set device to listen to (ex. wlan0)")
 	sniffCmd.Flags().StringVarP(&bpf, "bpf", "b", "", "set bpf filters")
+
+	sniffCmd.Flags().BoolP("connections", "c", false, "a life-refreshing TUI connections table")
 }
 
 // Sniff looks at the packet and, currently, prints out the packet info. It will
 // also store any DNS packets within the sqlite3 database
 func Sniff(cmd *cobra.Command) {
+	showConnections, err := cmd.Flags().GetBool("connections")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	// Get interface to sniff
 	search, err := cmd.Flags().GetBool("find-interfaces")
 	if err != nil {
@@ -66,6 +74,10 @@ func Sniff(cmd *cobra.Command) {
 		}
 	}
 
+	if showConnections {
+		// start real-time TUI
+	}
+
 	// Packet processing
 	n := 0
 	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
@@ -75,13 +87,21 @@ func Sniff(cmd *cobra.Command) {
 			log.Fatal("PacketInfo is nil")
 		}
 
-		if dnsInfo != nil {
-			if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
-				log.Fatalf("inserting into dns table: %v", err)
+		if showConnections {
+			t := conntrack.NewTracker()
+			if pi.Protocol == packet.TCP || pi.Protocol == packet.UDP {
+				t.UpdateTracker(pi)
+				// re-render the real-time TUI, maybe update every second, or 0.5s
 			}
-		}
+		} else {
+			if dnsInfo != nil {
+				if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
+					log.Fatalf("inserting into dns table: %v", err)
+				}
+			}
 
-		output.PrintPacketInfo(pi, n)
-		n++
+			output.PrintPacketInfo(pi, n)
+			n++
+		}
 	}
 }

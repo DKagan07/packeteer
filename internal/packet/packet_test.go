@@ -179,6 +179,39 @@ func TestExtractPacketInfo_TCP_IPv4(t *testing.T) {
 	assert.Equal("192.168.0.2", pi.DestIP)
 	assert.Equal("54321", pi.SrcPort)
 	assert.Equal("11117", pi.DestPort)
+	assert.Equal(TCPFlags{}, pi.TCPFlags)
+}
+
+func TestExtractPacketInfo_TCP_Flags(t *testing.T) {
+	assert := assert.New(t)
+
+	buf := gopacket.NewSerializeBuffer()
+	gopacket.SerializeLayers(buf,
+		gopacket.SerializeOptions{},
+		&layers.Ethernet{
+			SrcMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			DstMAC:       net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			EthernetType: layers.EthernetTypeIPv4,
+		},
+		&layers.IPv4{
+			Version:  4,
+			IHL:      5,
+			SrcIP:    net.IP{192, 168, 0, 1},
+			DstIP:    net.IP{192, 168, 0, 2},
+			Protocol: layers.IPProtocolTCP,
+		},
+		&layers.TCP{
+			SrcPort: layers.TCPPort(54321),
+			DstPort: layers.TCPPort(80),
+			SYN:     true,
+			ACK:     true,
+		},
+	)
+
+	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
+	pi, _ := ExtractPacketInfo(testPacket)
+	assert.NotEmpty(pi)
+	assert.Equal(TCPFlags{SYN: true, ACK: true}, pi.TCPFlags)
 }
 
 func TestExtractPacketInfo_UDP(t *testing.T) {
