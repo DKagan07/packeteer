@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"log"
 	"os"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/gopacket/gopacket"
 	"github.com/gopacket/gopacket/pcap"
 	"github.com/spf13/cobra"
@@ -74,34 +76,50 @@ func Sniff(cmd *cobra.Command) {
 		}
 	}
 
+	// Packet processing
+	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	if showConnections {
-		// start real-time TUI
+		packetChan := make(chan (*packet.PacketInfo))
+		go func() {
+			for p := range packetSrc.Packets() {
+				pi, _ := packet.ExtractPacketInfo(p)
+				if pi == nil {
+					continue
+					// log.Fatal("PacketInfo is nil")
+				}
+
+				if pi.Protocol == packet.TCP || pi.Protocol == packet.UDP {
+					packetChan <- pi
+				}
+
+			}
+		}()
+
+		// Running the bubbletea application
+		p := tea.NewProgram(conntrack.NewModel(packetChan))
+		if _, err := p.Run(); err != nil {
+			fmt.Printf("Alas, there's been an error: %v", err)
+			os.Exit(1)
+		}
+
+		os.Exit(0)
 	}
 
-	// Packet processing
+	// Normal packet capture
 	n := 0
-	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	for p := range packetSrc.Packets() {
 		pi, dnsInfo := packet.ExtractPacketInfo(p)
 		if pi == nil {
 			log.Fatal("PacketInfo is nil")
 		}
 
-		if showConnections {
-			t := conntrack.NewTracker()
-			if pi.Protocol == packet.TCP || pi.Protocol == packet.UDP {
-				t.UpdateTracker(pi)
-				// re-render the real-time TUI, maybe update every second, or 0.5s
+		if dnsInfo != nil {
+			if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
+				log.Fatalf("inserting into dns table: %v", err)
 			}
-		} else {
-			if dnsInfo != nil {
-				if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
-					log.Fatalf("inserting into dns table: %v", err)
-				}
-			}
-
-			output.PrintPacketInfo(pi, n)
-			n++
 		}
+
+		output.PrintPacketInfo(pi, n)
+		n++
 	}
 }
