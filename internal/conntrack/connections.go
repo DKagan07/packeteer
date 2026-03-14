@@ -187,6 +187,11 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 			v.State = StateClosed
 			v.TimeLastSeen = p.Timestamp
 		}
+
+		if v, ok := con[oppositeKey]; ok {
+			v.State = StateClosed
+			v.TimeLastSeen = p.Timestamp
+		}
 	}
 }
 
