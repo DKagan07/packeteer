@@ -18,6 +18,41 @@ func TestNewTracker(t *testing.T) {
 	assert.Len(t, tracker.connections, 0)
 }
 
+func TestUpdateTracker_UDP(t *testing.T) {
+	tracker := NewTracker()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	p1 := &packet.PacketInfo{
+		SrcIP:         "192.168.0.1",
+		SrcPort:       "8080",
+		DestIP:        "10.10.10.10",
+		DestPort:      "443",
+		Protocol:      packet.PacketProtocol("UDP"),
+		CaptureLength: 60,
+		Timestamp:     t0,
+	}
+
+	tracker.UpdateTracker(p1)
+	assert.NotNil(t, tracker.connections)
+	assert.Len(t, tracker.connections, 1)
+
+	key := fmt.Sprintf(
+		ConnKeyStringFormat,
+		p1.SrcIP, p1.SrcPort,
+		p1.DestIP, p1.DestPort,
+		p1.Protocol,
+	)
+
+	v, ok := tracker.connections[ConnKey(key)]
+	assert.True(t, ok)
+	assert.Equal(t, v.Protocol, packet.PacketProtocol("UDP"))
+	assert.Equal(t, v.State, StateUnknown)
+	assert.Equal(t, v.SrcIP, "192.168.0.1")
+	assert.Equal(t, v.SrcPort, "8080")
+	assert.Equal(t, v.DstIP, "10.10.10.10")
+	assert.Equal(t, v.DstPort, "443")
+}
+
 func TestUpdateTracker_TCPHandshake(t *testing.T) {
 	tracker := NewTracker()
 	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -395,7 +430,7 @@ func TestModelUpdate_QuitKey(t *testing.T) {
 	assert.Equal(t, tea.Quit(), cmd())
 }
 
-func TestModelView_ShowsConnections(t *testing.T) {
+func TestModelView_ShowsTCPConnections(t *testing.T) {
 	ch := make(chan *packet.PacketInfo, 1)
 	m := NewModel(ch)
 
@@ -408,6 +443,44 @@ func TestModelView_ShowsConnections(t *testing.T) {
 		TCPFlags: packet.TCPFlags{
 			SYN: true,
 		},
+	}
+
+	key := fmt.Sprintf(
+		ConnKeyStringFormat,
+		pi.SrcIP, pi.SrcPort,
+		pi.DestIP, pi.DestPort,
+		pi.Protocol,
+	)
+
+	updated, cmd := m.Update(packetCapture{packetInfo: pi})
+	assert.NotNil(t, cmd)
+
+	um := updated.(*model)
+	conn := um.tracker.connections
+	assert.Len(t, conn, 1)
+
+	v := m.View()
+	assert.NotNil(t, v)
+	content := v.Content
+	splitContent := strings.Split(content, "\n")
+	assert.Len(t, splitContent, 5)
+	assert.Equal(t, "Active Connections", splitContent[0])
+	assert.True(t, strings.Contains(splitContent[1], key))
+	assert.Equal(t, "", splitContent[2])
+	assert.Equal(t, "Press 'q' to quit", splitContent[3])
+	assert.Equal(t, "", splitContent[4])
+}
+
+func TestModelView_ShowsUDPConnections(t *testing.T) {
+	ch := make(chan *packet.PacketInfo, 1)
+	m := NewModel(ch)
+
+	pi := &packet.PacketInfo{
+		SrcIP:    "192.168.0.1",
+		SrcPort:  "8080",
+		DestIP:   "10.10.10.10",
+		DestPort: "443",
+		Protocol: packet.PacketProtocol("UDP"),
 	}
 
 	key := fmt.Sprintf(

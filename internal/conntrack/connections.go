@@ -3,8 +3,11 @@ package conntrack
 import (
 	"fmt"
 	"image/color"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -97,6 +100,22 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 	oppositeKey := ConnKey(
 		fmt.Sprintf(ConnKeyStringFormat, p.DestIP, p.DestPort, p.SrcIP, p.SrcPort, p.Protocol),
 	)
+
+	if p.Protocol == packet.PacketProtocol("UDP") {
+		con[key] = &Connection{
+			State:         StateUnknown,
+			Key:           key,
+			SrcIP:         p.SrcIP,
+			SrcPort:       p.SrcPort,
+			DstIP:         p.DestIP,
+			DstPort:       p.DestPort,
+			TimeStart:     p.Timestamp,
+			TimeLastSeen:  p.Timestamp,
+			BytesReceived: int64(p.CaptureLength),
+			Protocol:      p.Protocol,
+		}
+		return
+	}
 
 	// SYN, client -> server
 	if p.TCPFlags.SYN && !p.TCPFlags.ACK {
@@ -219,9 +238,34 @@ func (m *model) View() tea.View {
 	var header strings.Builder
 	header.WriteString("Active Connections\n")
 
-	for k, v := range m.tracker.connections {
-		con := fmt.Sprintf("%s :: %s", k, v.State)
-		header.WriteString(setStyledString(con, v.State))
+	sortedKeys := slices.Sorted(maps.Keys(m.tracker.connections))
+
+	var tw strings.Builder
+	w := tabwriter.NewWriter(&tw, 3, 4, 1, ' ', 0)
+	states := make([]TCPState, 0, len(sortedKeys))
+	for _, k := range sortedKeys {
+		v := m.tracker.connections[k]
+		if v.Protocol == packet.PacketProtocol("UDP") {
+			fmt.Fprintf(w, "%s\t | bytes: %d\n", k, v.BytesReceived)
+			states = append(states, StateUnknown)
+		} else {
+			fmt.Fprintf(w, "%s\t:: %s\t | bytes: %d\n", k, v.State, v.BytesReceived)
+			states = append(states, v.State)
+		}
+	}
+	w.Flush()
+
+	lines := strings.Split(tw.String(), "\n")
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		var state TCPState
+		if i < len(states) {
+			state = states[i]
+		}
+		header.WriteString(setStyledString(line, state))
 		header.WriteString("\n")
 	}
 
@@ -256,7 +300,7 @@ func setStyledString(s string, state TCPState) string {
 	case StateClosed:
 		c = lipgloss.Red
 	default:
-		c = lipgloss.Black
+		c = lipgloss.White
 	}
 
 	style := lipgloss.NewStyle().Foreground(c)
