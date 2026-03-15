@@ -27,7 +27,7 @@ func TestExtractPacketInfo_Metadata(t *testing.T) {
 		},
 	)
 
-	now := time.Now()
+	now := time.Now().UTC()
 	l := len(buf.Bytes())
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeEthernet, gopacket.Default)

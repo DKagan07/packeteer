@@ -2,16 +2,8 @@ package conntrack
 
 import (
 	"fmt"
-	"image/color"
-	"maps"
-	"slices"
-	"strings"
 	"sync"
-	"text/tabwriter"
 	"time"
-
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"packeteer/internal/packet"
 )
@@ -46,8 +38,9 @@ type Connection struct {
 	State         TCPState              // only matters for TCP
 	BytesReceived int64                 // from src -> dst
 	BytesSent     int64                 // from dst -> src
-	TimeStart     time.Time             // when the connectino was first seen
-	TimeLastSeen  time.Time             // when the most recent packet for this arrived
+	TotalBytes    int64
+	TimeStart     time.Time // when the connectino was first seen
+	TimeLastSeen  time.Time // when the most recent packet for this arrived
 }
 
 // String satisfies the fmt.Stringer interface and now returns the string
@@ -102,6 +95,10 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 	)
 
 	if p.Protocol == packet.PacketProtocol("UDP") {
+		if v, ok := con[key]; ok {
+			v.TotalBytes += v.BytesReceived
+			v.TimeLastSeen = p.Timestamp
+		}
 		con[key] = &Connection{
 			State:         StateUnknown,
 			Key:           key,
@@ -112,6 +109,7 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 			TimeStart:     p.Timestamp,
 			TimeLastSeen:  p.Timestamp,
 			BytesReceived: int64(p.CaptureLength),
+			TotalBytes:    int64(p.CaptureLength),
 			Protocol:      p.Protocol,
 		}
 		return
@@ -148,6 +146,7 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 			v.State = StateSynReceived
 			v.TimeLastSeen = p.Timestamp
 			v.BytesSent = int64(p.CaptureLength)
+			v.TotalBytes += int64(p.CaptureLength)
 		}
 	} else if p.TCPFlags.FIN { // FIN
 		switch {
@@ -181,6 +180,7 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 			v.State = StateEstablished
 			v.TimeLastSeen = p.Timestamp
 			v.BytesReceived = int64(p.CaptureLength)
+			v.TotalBytes += int64(p.CaptureLength)
 		}
 	} else if p.TCPFlags.RST { // Hard Stop, RST
 		if v, ok := con[key]; ok {
@@ -193,121 +193,4 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 			v.TimeLastSeen = p.Timestamp
 		}
 	}
-}
-
-// model is the model structure for the bubbletea TUI
-type model struct {
-	tracker    Tracker
-	pocketChan <-chan *packet.PacketInfo
-}
-
-// packetCapture is the UI event-type of PacketInfo
-type packetCapture struct {
-	packetInfo *packet.PacketInfo
-}
-
-// NewModel returns a new model used for the bubbletea TUI
-func NewModel(pc <-chan *packet.PacketInfo) *model {
-	return &model{
-		tracker:    NewTracker(),
-		pocketChan: pc,
-	}
-}
-
-// Init is 1/3 of fulfilling the bubbletea interface. It initialized reading
-// from the channel
-func (m *model) Init() tea.Cmd {
-	return waitForPacket(m.pocketChan)
-}
-
-// Update is 2/3 of the bubbletea interface, which updates the tracker with a
-// packet read in from the channel, or a keypress to quit the TUI
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return m, tea.Quit
-		}
-	case packetCapture:
-		pi := msg.packetInfo
-		m.tracker.UpdateTracker(pi)
-		return m, waitForPacket(m.pocketChan)
-	}
-	return m, nil
-}
-
-// View is 3/3 of the bubbletea interface where the view is generated to the
-// terminal
-func (m *model) View() tea.View {
-	var header strings.Builder
-	header.WriteString("Active Connections\n")
-
-	sortedKeys := slices.Sorted(maps.Keys(m.tracker.connections))
-
-	var tw strings.Builder
-	w := tabwriter.NewWriter(&tw, 3, 4, 1, ' ', 0)
-	states := make([]TCPState, 0, len(sortedKeys))
-	for _, k := range sortedKeys {
-		v := m.tracker.connections[k]
-		if v.Protocol == packet.PacketProtocol("UDP") {
-			fmt.Fprintf(w, "%s\t | bytes: %d\n", k, v.BytesReceived)
-			states = append(states, StateUnknown)
-		} else {
-			fmt.Fprintf(w, "%s\t:: %s\t | bytes: %d\n", k, v.State, v.BytesReceived)
-			states = append(states, v.State)
-		}
-	}
-	w.Flush()
-
-	lines := strings.Split(tw.String(), "\n")
-	for i, line := range lines {
-		if line == "" {
-			continue
-		}
-
-		var state TCPState
-		if i < len(states) {
-			state = states[i]
-		}
-		header.WriteString(setStyledString(line, state))
-		header.WriteString("\n")
-	}
-
-	header.WriteString("\nPress 'q' to quit\n")
-	return tea.NewView(header.String())
-}
-
-// waitForPacket wraps reading the channel into a packetCapture struct, which
-// decouples this from the domain structures from the UI structures
-func waitForPacket(pc <-chan *packet.PacketInfo) tea.Cmd {
-	return func() tea.Msg {
-		return packetCapture{
-			packetInfo: <-pc,
-		}
-	}
-}
-
-// setStyledString styles the connection string based on the state
-func setStyledString(s string, state TCPState) string {
-	var c color.Color
-	switch state {
-	case StateSynSent:
-		c = lipgloss.BrightCyan
-	case StateSynReceived:
-		c = lipgloss.Cyan
-	case StateEstablished:
-		c = lipgloss.Green
-	case StateFinInitiated:
-		c = lipgloss.Yellow
-	case StateFinWait:
-		c = lipgloss.Magenta
-	case StateClosed:
-		c = lipgloss.Red
-	default:
-		c = lipgloss.White
-	}
-
-	style := lipgloss.NewStyle().Foreground(c)
-	return style.Render(s)
 }

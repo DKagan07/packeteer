@@ -59,7 +59,7 @@ func ExtractPacketInfo(p gopacket.Packet) (*PacketInfo, *dns.DNSInfo) {
 	var dnsInfo *dns.DNSInfo
 
 	md := p.Metadata()
-	pi.Timestamp = md.Timestamp
+	pi.Timestamp = md.Timestamp.UTC()
 	pi.Length = md.Length
 	pi.CaptureLength = md.CaptureLength
 
