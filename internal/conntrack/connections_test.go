@@ -43,12 +43,88 @@ func TestUpdateTracker_UDP(t *testing.T) {
 
 	v, ok := tracker.connections[ConnKey(key)]
 	assert.True(t, ok)
-	assert.Equal(t, v.Protocol, packet.PacketProtocol("UDP"))
-	assert.Equal(t, v.State, StateUnknown)
-	assert.Equal(t, v.SrcIP, "192.168.0.1")
-	assert.Equal(t, v.SrcPort, "8080")
-	assert.Equal(t, v.DstIP, "10.10.10.10")
-	assert.Equal(t, v.DstPort, "443")
+	assert.Equal(t, packet.PacketProtocol("UDP"), v.Protocol)
+	assert.Equal(t, StateUnknown, v.State)
+	assert.Equal(t, "192.168.0.1", v.SrcIP)
+	assert.Equal(t, "8080", v.SrcPort)
+	assert.Equal(t, "10.10.10.10", v.DstIP)
+	assert.Equal(t, "443", v.DstPort)
+	assert.Equal(t, int64(60), v.BytesReceived)
+	assert.Equal(t, int64(60), v.TotalBytes)
+	assert.Equal(t, t0, v.TimeStart)
+	assert.Equal(t, t0, v.TimeLastSeen)
+}
+
+func TestUpdateTracker_UDP_AccumulatesTotalBytes(t *testing.T) {
+	tracker := NewTracker()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Second)
+
+	p1 := &packet.PacketInfo{
+		SrcIP:         "192.168.0.1",
+		SrcPort:       "8080",
+		DestIP:        "10.10.10.10",
+		DestPort:      "443",
+		Protocol:      packet.PacketProtocol("UDP"),
+		CaptureLength: 60,
+		Timestamp:     t0,
+	}
+	p2 := &packet.PacketInfo{
+		SrcIP:         "192.168.0.1",
+		SrcPort:       "8080",
+		DestIP:        "10.10.10.10",
+		DestPort:      "443",
+		Protocol:      packet.PacketProtocol("UDP"),
+		CaptureLength: 100,
+		Timestamp:     t1,
+	}
+
+	tracker.UpdateTracker(p1)
+	tracker.UpdateTracker(p2)
+
+	assert.Len(t, tracker.connections, 1)
+
+	key := fmt.Sprintf(
+		ConnKeyStringFormat,
+		p1.SrcIP, p1.SrcPort,
+		p1.DestIP, p1.DestPort,
+		p1.Protocol,
+	)
+
+	v, ok := tracker.connections[ConnKey(key)]
+	assert.True(t, ok)
+	assert.Equal(t, int64(160), v.TotalBytes) // 60 (initial) + 60 (BytesReceived)
+	assert.Equal(t, t0, v.TimeStart)          // unchanged
+	assert.Equal(t, t1, v.TimeLastSeen)
+}
+
+func TestUpdateTracker_UDP_DistinctConnectionsNotMerged(t *testing.T) {
+	tracker := NewTracker()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	p1 := &packet.PacketInfo{
+		SrcIP:         "192.168.0.1",
+		SrcPort:       "8080",
+		DestIP:        "10.10.10.10",
+		DestPort:      "443",
+		Protocol:      packet.PacketProtocol("UDP"),
+		CaptureLength: 60,
+		Timestamp:     t0,
+	}
+	p2 := &packet.PacketInfo{
+		SrcIP:         "192.168.0.2",
+		SrcPort:       "9090",
+		DestIP:        "10.10.10.10",
+		DestPort:      "443",
+		Protocol:      packet.PacketProtocol("UDP"),
+		CaptureLength: 80,
+		Timestamp:     t0,
+	}
+
+	tracker.UpdateTracker(p1)
+	tracker.UpdateTracker(p2)
+
+	assert.Len(t, tracker.connections, 2)
 }
 
 func TestUpdateTracker_TCPHandshake(t *testing.T) {

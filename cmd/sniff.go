@@ -79,13 +79,15 @@ func Sniff(cmd *cobra.Command) {
 	// Packet processing
 	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	if showConnections {
-		packetChan := make(chan (*packet.PacketInfo))
+		packetChan := make(chan *packet.PacketInfo)
 		go func() {
 			for p := range packetSrc.Packets() {
-				pi, _ := packet.ExtractPacketInfo(p)
+				pi, err := packet.ExtractPacketInfo(p)
+				if err != nil {
+					log.Fatalf("error extracting packet info: %v", err)
+				}
 				if pi == nil {
 					continue
-					// log.Fatal("PacketInfo is nil")
 				}
 
 				if pi.Protocol == packet.TCP || pi.Protocol == packet.UDP {
@@ -96,13 +98,15 @@ func Sniff(cmd *cobra.Command) {
 		}()
 
 		// Running the bubbletea application
-		p := tea.NewProgram(conntrack.NewModel(packetChan))
+		m := conntrack.NewModel(packetChan)
+		p := tea.NewProgram(m)
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Alas, there's been an error: %v", err)
-			os.Exit(1)
+			return
 		}
 
-		os.Exit(0)
+		m.PrintStats()
+		return
 	}
 
 	// Normal packet capture

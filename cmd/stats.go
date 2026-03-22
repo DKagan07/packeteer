@@ -38,8 +38,8 @@ func GetStats(cmd *cobra.Command, args []string) {
 			log.Fatal(err)
 		}
 
-		// need to pretty print this list
 		output.PrintMostQueriedDomains(domains)
+		return
 	}
 
 	otf, _ := cmd.Flags().GetBool("over-time")
@@ -49,11 +49,8 @@ func GetStats(cmd *cobra.Command, args []string) {
 			log.Fatal(err)
 		}
 
-		if mqf {
-			fmt.Println()
-		}
-
 		output.PrintQueriesOverTime(ots)
+		return
 	}
 
 	if uf, _ := cmd.Flags().GetBool("unique"); uf {
@@ -62,21 +59,18 @@ func GetStats(cmd *cobra.Command, args []string) {
 			log.Fatal(err)
 		}
 
-		if mqf || otf {
-			fmt.Println()
-		}
-
 		output.PrintUniqueDomains(dqs)
+		return
 	}
 
-	// _, err := storage.GetDNSEntries(db)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	//
-	// for _, e := range dnsEntries {
-	// 	fmt.Println("cname paths: ", e.CNamePath)
-	// 	fmt.Println("reponse IPs: ", e.ResponseIPs)
-	// 	fmt.Println()
-	// }
+	dnsEntries, err := storage.GetDNSEntries(db)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, e := range dnsEntries {
+		fmt.Println("cname paths: ", e.CNamePath)
+		fmt.Println("reponse IPs: ", e.ResponseIPs)
+		fmt.Println()
+	}
 }

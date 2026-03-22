@@ -39,7 +39,7 @@ type Connection struct {
 	BytesReceived int64                 // from src -> dst
 	BytesSent     int64                 // from dst -> src
 	TotalBytes    int64
-	TimeStart     time.Time // when the connectino was first seen
+	TimeStart     time.Time // when the connection was first seen
 	TimeLastSeen  time.Time // when the most recent packet for this arrived
 }
 
@@ -94,23 +94,24 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 		fmt.Sprintf(ConnKeyStringFormat, p.DestIP, p.DestPort, p.SrcIP, p.SrcPort, p.Protocol),
 	)
 
-	if p.Protocol == packet.PacketProtocol("UDP") {
+	if p.Protocol == packet.UDP {
 		if v, ok := con[key]; ok {
-			v.TotalBytes += v.BytesReceived
+			v.TotalBytes += int64(p.CaptureLength)
 			v.TimeLastSeen = p.Timestamp
-		}
-		con[key] = &Connection{
-			State:         StateUnknown,
-			Key:           key,
-			SrcIP:         p.SrcIP,
-			SrcPort:       p.SrcPort,
-			DstIP:         p.DestIP,
-			DstPort:       p.DestPort,
-			TimeStart:     p.Timestamp,
-			TimeLastSeen:  p.Timestamp,
-			BytesReceived: int64(p.CaptureLength),
-			TotalBytes:    int64(p.CaptureLength),
-			Protocol:      p.Protocol,
+		} else {
+			con[key] = &Connection{
+				State:         StateUnknown,
+				Key:           key,
+				SrcIP:         p.SrcIP,
+				SrcPort:       p.SrcPort,
+				DstIP:         p.DestIP,
+				DstPort:       p.DestPort,
+				TimeStart:     p.Timestamp,
+				TimeLastSeen:  p.Timestamp,
+				BytesReceived: int64(p.CaptureLength),
+				TotalBytes:    int64(p.CaptureLength),
+				Protocol:      p.Protocol,
+			}
 		}
 		return
 	}

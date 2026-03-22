@@ -17,9 +17,16 @@ import (
 
 // model is the model structure for the bubbletea TUI
 type model struct {
-	tracker    Tracker
-	pocketChan <-chan *packet.PacketInfo
-	cancel     context.CancelFunc
+	tracker          Tracker
+	packetChan       <-chan *packet.PacketInfo
+	longestLivedConn *connInfo
+	highestDataConn  *connInfo
+	cancel           context.CancelFunc
+}
+
+type connInfo struct {
+	ConnectionName  string
+	ConnectionValue int
 }
 
 // packetCapture is the UI event-type of PacketInfo
@@ -30,9 +37,11 @@ type packetCapture struct {
 // NewModel returns a new model used for the bubbletea TUI
 func NewModel(pc <-chan *packet.PacketInfo) *model {
 	return &model{
-		tracker:    NewTracker(),
-		pocketChan: pc,
-		cancel:     func() {},
+		tracker:          NewTracker(),
+		packetChan:       pc,
+		longestLivedConn: nil,
+		highestDataConn:  nil,
+		cancel:           func() {},
 	}
 }
 
@@ -42,8 +51,8 @@ func (m *model) Init() tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m.cancel = cancel
-	CleanupRoutine(ctx, &m.tracker)
-	return waitForPacket(m.pocketChan)
+	m.CleanupRoutine(ctx, &m.tracker)
+	return waitForPacket(m.packetChan)
 }
 
 // Update is 2/3 of the bubbletea interface, which updates the tracker with a
@@ -54,13 +63,12 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q":
 			m.cancel()
-			m.PrintStats()
 			return m, tea.Quit
 		}
 	case packetCapture:
 		pi := msg.packetInfo
 		m.tracker.UpdateTracker(pi)
-		return m, waitForPacket(m.pocketChan)
+		return m, waitForPacket(m.packetChan)
 	}
 	return m, nil
 }
@@ -71,8 +79,8 @@ func (m *model) View() tea.View {
 	var header strings.Builder
 	header.WriteString("Active Connections\n")
 
-	m.tracker.mu.Lock()
-	defer m.tracker.mu.Unlock()
+	m.tracker.mu.RLock()
+	defer m.tracker.mu.RUnlock()
 	sortedKeys := slices.Sorted(maps.Keys(m.tracker.connections))
 
 	var tw strings.Builder
@@ -80,7 +88,7 @@ func (m *model) View() tea.View {
 	states := make([]TCPState, 0, len(sortedKeys))
 	for _, k := range sortedKeys {
 		v := m.tracker.connections[k]
-		if v.Protocol == packet.PacketProtocol("UDP") {
+		if v.Protocol == packet.UDP {
 			fmt.Fprintf(w, "%s\t | bytes: %d\n", k, v.TotalBytes)
 			states = append(states, StateUnknown)
 		} else {
@@ -142,4 +150,30 @@ func setStyledString(s string, state TCPState) string {
 	return style.Render(s)
 }
 
-func (m *model) PrintStats() {}
+// PrintStats prints longest-lived connections top talkers by bytes transferred.
+func (m *model) PrintStats() {
+	fmt.Println()
+
+	fmt.Println(strings.Repeat("*", 40))
+	fmt.Println("Longest Lived Connection")
+	li := m.longestLivedConn
+	if li == nil {
+		fmt.Println("No longest living connections")
+	} else {
+		fmt.Printf("%s : %d (s)\n", li.ConnectionName, li.ConnectionValue)
+	}
+	fmt.Println(strings.Repeat("*", 40))
+
+	fmt.Println()
+
+	fmt.Println(strings.Repeat("*", 40))
+	fmt.Println("Most Data-throughput Connection")
+	di := m.highestDataConn
+	if di == nil {
+		fmt.Println("No connections with any throughput")
+	} else {
+		fmt.Printf("%s : %d (bytes)\n", di.ConnectionName, di.ConnectionValue)
+	}
+	fmt.Println(strings.Repeat("*", 40))
+	fmt.Println()
+}
