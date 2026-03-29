@@ -13,7 +13,8 @@ import (
 
 func TestModelUpdate_PacketCapture(t *testing.T) {
 	ch := make(chan *packet.PacketInfo, 1)
-	m := NewModel(ch)
+	tracker := NewTracker()
+	m := NewModel(ch, &tracker)
 
 	pi := &packet.PacketInfo{
 		SrcIP:    "192.168.0.1",
@@ -48,7 +49,8 @@ func TestModelUpdate_PacketCapture(t *testing.T) {
 
 func TestModelUpdate_QuitKey(t *testing.T) {
 	ch := make(chan *packet.PacketInfo)
-	m := NewModel(ch)
+	tracker := NewTracker()
+	m := NewModel(ch, &tracker)
 	keyQ := tea.KeyPressMsg{
 		Text: "q",
 	}
@@ -59,7 +61,8 @@ func TestModelUpdate_QuitKey(t *testing.T) {
 
 func TestModelView_ShowsTCPConnections(t *testing.T) {
 	ch := make(chan *packet.PacketInfo, 1)
-	m := NewModel(ch)
+	tracker := NewTracker()
+	m := NewModel(ch, &tracker)
 
 	pi := &packet.PacketInfo{
 		SrcIP:    "192.168.0.1",
@@ -100,7 +103,8 @@ func TestModelView_ShowsTCPConnections(t *testing.T) {
 
 func TestModelView_ShowsUDPConnections(t *testing.T) {
 	ch := make(chan *packet.PacketInfo, 1)
-	m := NewModel(ch)
+	tracker := NewTracker()
+	m := NewModel(ch, &tracker)
 
 	pi := &packet.PacketInfo{
 		SrcIP:    "192.168.0.1",

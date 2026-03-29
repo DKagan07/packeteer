@@ -17,7 +17,7 @@ import (
 
 // model is the model structure for the bubbletea TUI
 type model struct {
-	tracker          Tracker
+	tracker          *Tracker
 	packetChan       <-chan *packet.PacketInfo
 	longestLivedConn *connInfo
 	highestDataConn  *connInfo
@@ -35,9 +35,9 @@ type packetCapture struct {
 }
 
 // NewModel returns a new model used for the bubbletea TUI
-func NewModel(pc <-chan *packet.PacketInfo) *model {
+func NewModel(pc <-chan *packet.PacketInfo, tracker *Tracker) *model {
 	return &model{
-		tracker:          NewTracker(),
+		tracker:          tracker,
 		packetChan:       pc,
 		longestLivedConn: nil,
 		highestDataConn:  nil,
@@ -51,7 +51,7 @@ func (m *model) Init() tea.Cmd {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	m.cancel = cancel
-	m.CleanupRoutine(ctx, &m.tracker)
+	m.CleanupRoutine(ctx, m.tracker)
 	return waitForPacket(m.packetChan)
 }
 

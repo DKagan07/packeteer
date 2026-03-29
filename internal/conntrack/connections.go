@@ -82,6 +82,10 @@ func NewTracker() Tracker {
 // UpdateTracker takes in a TCP or UDP packet and builds/updates a connection
 // in the connection map
 func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
+	if p.Protocol != packet.TCP && p.Protocol != packet.UDP {
+		return
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

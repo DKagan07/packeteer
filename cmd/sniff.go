@@ -76,29 +76,32 @@ func Sniff(cmd *cobra.Command) {
 		}
 	}
 
-	// Packet processing
+	// Producer loop
 	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
-	if showConnections {
-		packetChan := make(chan *packet.PacketInfo)
-		go func() {
-			for p := range packetSrc.Packets() {
-				pi, err := packet.ExtractPacketInfo(p)
-				if err != nil {
-					log.Fatalf("error extracting packet info: %v", err)
-				}
-				if pi == nil {
-					continue
-				}
-
-				if pi.Protocol == packet.TCP || pi.Protocol == packet.UDP {
-					packetChan <- pi
-				}
-
+	packetChan := make(chan *packet.PacketInfo)
+	go func() {
+		for p := range packetSrc.Packets() {
+			pi, dnsInfo := packet.ExtractPacketInfo(p)
+			if pi == nil {
+				continue
 			}
-		}()
 
+			if dnsInfo != nil {
+				if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
+					log.Fatalf("inserting into dns table: %v", err)
+				}
+			}
+
+			packetChan <- pi
+		}
+	}()
+
+	tracker := conntrack.NewTracker()
+
+	// If the connections flag is present, we'll display it
+	if showConnections {
 		// Running the bubbletea application
-		m := conntrack.NewModel(packetChan)
+		m := conntrack.NewModel(packetChan, &tracker)
 		p := tea.NewProgram(m)
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("Alas, there's been an error: %v", err)
@@ -109,20 +112,17 @@ func Sniff(cmd *cobra.Command) {
 		return
 	}
 
-	// Normal packet capture
+	handlePrintPacketInfo(packetChan, &tracker)
+}
+
+// handlePrintPacketInfo is a helper function that will read from the PacketInfo
+// channel and both update the tracker and print out the PacketInfo.
+func handlePrintPacketInfo(
+	captureChan <-chan *packet.PacketInfo, tracker *conntrack.Tracker,
+) {
 	n := 0
-	for p := range packetSrc.Packets() {
-		pi, dnsInfo := packet.ExtractPacketInfo(p)
-		if pi == nil {
-			log.Fatal("PacketInfo is nil")
-		}
-
-		if dnsInfo != nil {
-			if err := dns.InsertDNSInfo(dnsInfo, db); err != nil {
-				log.Fatalf("inserting into dns table: %v", err)
-			}
-		}
-
+	for pi := range captureChan {
+		tracker.UpdateTracker(pi)
 		output.PrintPacketInfo(pi, n)
 		n++
 	}
