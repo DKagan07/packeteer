@@ -14,6 +14,7 @@ import (
 	"packeteer/internal/dns"
 	"packeteer/internal/output"
 	"packeteer/internal/packet"
+	"packeteer/internal/rule"
 )
 
 var (
@@ -79,6 +80,10 @@ func Sniff(cmd *cobra.Command) {
 	// Producer loop
 	packetSrc := gopacket.NewPacketSource(handle, handle.LinkType())
 	packetChan := make(chan *packet.PacketInfo)
+	rulesChan := make(chan *packet.PacketInfo)
+	tracker := conntrack.NewTracker()
+	rd := rule.NewRuleDetection(rulesChan, db)
+
 	go func() {
 		for p := range packetSrc.Packets() {
 			pi, dnsInfo := packet.ExtractPacketInfo(p)
@@ -92,11 +97,13 @@ func Sniff(cmd *cobra.Command) {
 				}
 			}
 
+			rulesChan <- pi
 			packetChan <- pi
+
 		}
 	}()
 
-	tracker := conntrack.NewTracker()
+	go rd.Read()
 
 	// If the connections flag is present, we'll display it
 	if showConnections {

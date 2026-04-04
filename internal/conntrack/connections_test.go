@@ -12,8 +12,8 @@ import (
 
 func TestNewTracker(t *testing.T) {
 	tracker := NewTracker()
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 0)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 0)
 }
 
 func TestUpdateTracker_UDP(t *testing.T) {
@@ -31,8 +31,8 @@ func TestUpdateTracker_UDP(t *testing.T) {
 	}
 
 	tracker.UpdateTracker(p1)
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
 	key := fmt.Sprintf(
 		ConnKeyStringFormat,
@@ -41,7 +41,7 @@ func TestUpdateTracker_UDP(t *testing.T) {
 		p1.Protocol,
 	)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, packet.PacketProtocol("UDP"), v.Protocol)
 	assert.Equal(t, StateUnknown, v.State)
@@ -82,7 +82,7 @@ func TestUpdateTracker_UDP_AccumulatesTotalBytes(t *testing.T) {
 	tracker.UpdateTracker(p1)
 	tracker.UpdateTracker(p2)
 
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
 	key := fmt.Sprintf(
 		ConnKeyStringFormat,
@@ -91,7 +91,7 @@ func TestUpdateTracker_UDP_AccumulatesTotalBytes(t *testing.T) {
 		p1.Protocol,
 	)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, int64(160), v.TotalBytes) // 60 (initial) + 60 (BytesReceived)
 	assert.Equal(t, t0, v.TimeStart)          // unchanged
@@ -124,7 +124,7 @@ func TestUpdateTracker_UDP_DistinctConnectionsNotMerged(t *testing.T) {
 	tracker.UpdateTracker(p1)
 	tracker.UpdateTracker(p2)
 
-	assert.Len(t, tracker.connections, 2)
+	assert.Len(t, tracker.Connections, 2)
 }
 
 func TestUpdateTracker_TCPHandshake(t *testing.T) {
@@ -148,8 +148,8 @@ func TestUpdateTracker_TCPHandshake(t *testing.T) {
 	}
 
 	tracker.UpdateTracker(p1)
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
 	key := fmt.Sprintf(
 		ConnKeyStringFormat,
@@ -158,7 +158,7 @@ func TestUpdateTracker_TCPHandshake(t *testing.T) {
 		p1.Protocol,
 	)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateSynSent)
@@ -181,10 +181,10 @@ func TestUpdateTracker_TCPHandshake(t *testing.T) {
 	}
 
 	tracker.UpdateTracker(p2)
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok = tracker.connections[ConnKey(key)]
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateSynReceived)
@@ -208,10 +208,10 @@ func TestUpdateTracker_TCPHandshake(t *testing.T) {
 	}
 
 	tracker.UpdateTracker(p3)
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok = tracker.connections[ConnKey(key)]
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateEstablished)
@@ -230,7 +230,7 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		packet.PacketProtocol("TCP"),
 	)
 
-	tracker.connections[ConnKey(key)] = &Connection{
+	tracker.Connections[ConnKey(key)] = &Connection{
 		Key:      ConnKey(key),
 		SrcIP:    "192.168.0.1",
 		SrcPort:  "8080",
@@ -240,8 +240,8 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		State:    StateEstablished,
 	}
 
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
 	p1 := &packet.PacketInfo{
 		SrcIP:    "192.168.0.1",
@@ -254,9 +254,9 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		},
 	}
 	tracker.UpdateTracker(p1)
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateFinInitiated)
@@ -272,9 +272,9 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		},
 	}
 	tracker.UpdateTracker(p2)
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok = tracker.connections[ConnKey(key)]
+	v, ok = tracker.Connections[ConnKey(key)]
 
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
@@ -291,9 +291,9 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		},
 	}
 	tracker.UpdateTracker(p3)
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok = tracker.connections[ConnKey(key)]
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateFinWait)
@@ -309,9 +309,9 @@ func TestTrackerUpdate_Teardown_FIN_ClientInitiated(t *testing.T) {
 		},
 	}
 	tracker.UpdateTracker(p4)
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok = tracker.connections[ConnKey(key)]
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateClosed)
@@ -326,7 +326,7 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		packet.PacketProtocol("TCP"),
 	)
 
-	tracker.connections[ConnKey(key)] = &Connection{
+	tracker.Connections[ConnKey(key)] = &Connection{
 		Key:      ConnKey(key),
 		SrcIP:    "192.168.0.1",
 		SrcPort:  "8080",
@@ -336,8 +336,8 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		State:    StateEstablished,
 	}
 
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
 	// Step 1: Server initiates teardown with FIN
 	p1 := &packet.PacketInfo{
@@ -349,8 +349,8 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		TCPFlags: packet.TCPFlags{FIN: true},
 	}
 	tracker.UpdateTracker(p1)
-	assert.Len(t, tracker.connections, 1)
-	v, ok := tracker.connections[ConnKey(key)]
+	assert.Len(t, tracker.Connections, 1)
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateFinInitiated)
@@ -365,8 +365,8 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		TCPFlags: packet.TCPFlags{ACK: true},
 	}
 	tracker.UpdateTracker(p2)
-	assert.Len(t, tracker.connections, 1)
-	v, ok = tracker.connections[ConnKey(key)]
+	assert.Len(t, tracker.Connections, 1)
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateFinWait)
@@ -381,8 +381,8 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		TCPFlags: packet.TCPFlags{FIN: true},
 	}
 	tracker.UpdateTracker(p3)
-	assert.Len(t, tracker.connections, 1)
-	v, ok = tracker.connections[ConnKey(key)]
+	assert.Len(t, tracker.Connections, 1)
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateClosed)
@@ -397,8 +397,8 @@ func TestTrackerUpdate_Teardown_FIN_ServerInitiated(t *testing.T) {
 		TCPFlags: packet.TCPFlags{ACK: true},
 	}
 	tracker.UpdateTracker(p4)
-	assert.Len(t, tracker.connections, 1)
-	v, ok = tracker.connections[ConnKey(key)]
+	assert.Len(t, tracker.Connections, 1)
+	v, ok = tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateClosed)
@@ -413,7 +413,7 @@ func TestTrackerUpdate_Teartown_RST(t *testing.T) {
 		packet.PacketProtocol("TCP"),
 	)
 
-	tracker.connections[ConnKey(key)] = &Connection{
+	tracker.Connections[ConnKey(key)] = &Connection{
 		Key:      ConnKey(key),
 		SrcIP:    "192.168.0.1",
 		SrcPort:  "8080",
@@ -423,8 +423,8 @@ func TestTrackerUpdate_Teartown_RST(t *testing.T) {
 		State:    StateEstablished,
 	}
 
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 1)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 1)
 
 	rstTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	p1 := &packet.PacketInfo{
@@ -439,9 +439,9 @@ func TestTrackerUpdate_Teartown_RST(t *testing.T) {
 		},
 	}
 	tracker.UpdateTracker(p1)
-	assert.Len(t, tracker.connections, 1)
+	assert.Len(t, tracker.Connections, 1)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, v.Protocol, packet.PacketProtocol("TCP"))
 	assert.Equal(t, v.State, StateClosed)
@@ -459,7 +459,7 @@ func TestUpdateTracker_DataTransferACK(t *testing.T) {
 		"10.10.10.10", "443",
 		packet.PacketProtocol("TCP"),
 	)
-	tracker.connections[ConnKey(key)] = &Connection{
+	tracker.Connections[ConnKey(key)] = &Connection{
 		Key:           ConnKey(key),
 		SrcIP:         "192.168.0.1",
 		SrcPort:       "8080",
@@ -484,7 +484,7 @@ func TestUpdateTracker_DataTransferACK(t *testing.T) {
 	}
 	tracker.UpdateTracker(p)
 
-	v, ok := tracker.connections[ConnKey(key)]
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, StateEstablished, v.State)
 	assert.Equal(t, int64(512), v.BytesReceived)
@@ -505,7 +505,7 @@ func TestTrackerUpdate_RST_ServerInitiated(t *testing.T) {
 	)
 	rstTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
-	tracker.connections[ConnKey(key)] = &Connection{
+	tracker.Connections[ConnKey(key)] = &Connection{
 		Key:      ConnKey(key),
 		SrcIP:    "192.168.0.1",
 		SrcPort:  "8080",
@@ -526,8 +526,8 @@ func TestTrackerUpdate_RST_ServerInitiated(t *testing.T) {
 	}
 	tracker.UpdateTracker(p)
 
-	assert.Len(t, tracker.connections, 1)
-	v, ok := tracker.connections[ConnKey(key)]
+	assert.Len(t, tracker.Connections, 1)
+	v, ok := tracker.Connections[ConnKey(key)]
 	assert.True(t, ok)
 	assert.Equal(t, StateClosed, v.State)
 	assert.Equal(t, rstTime, v.TimeLastSeen)
@@ -546,7 +546,7 @@ func TestUpdateTracker_SYNACK_NoPriorConnection(t *testing.T) {
 	}
 	tracker.UpdateTracker(p)
 
-	assert.Len(t, tracker.connections, 0)
+	assert.Len(t, tracker.Connections, 0)
 }
 
 func TestTrackerUpdate_EmptyPacketInfo(t *testing.T) {
@@ -555,6 +555,6 @@ func TestTrackerUpdate_EmptyPacketInfo(t *testing.T) {
 
 	tracker.UpdateTracker(p)
 
-	assert.NotNil(t, tracker.connections)
-	assert.Len(t, tracker.connections, 0)
+	assert.NotNil(t, tracker.Connections)
+	assert.Len(t, tracker.Connections, 0)
 }

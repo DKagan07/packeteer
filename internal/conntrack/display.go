@@ -81,13 +81,13 @@ func (m *model) View() tea.View {
 
 	m.tracker.mu.RLock()
 	defer m.tracker.mu.RUnlock()
-	sortedKeys := slices.Sorted(maps.Keys(m.tracker.connections))
+	sortedKeys := slices.Sorted(maps.Keys(m.tracker.Connections))
 
 	var tw strings.Builder
 	w := tabwriter.NewWriter(&tw, 3, 4, 1, ' ', 0)
 	states := make([]TCPState, 0, len(sortedKeys))
 	for _, k := range sortedKeys {
-		v := m.tracker.connections[k]
+		v := m.tracker.Connections[k]
 		if v.Protocol == packet.UDP {
 			fmt.Fprintf(w, "%s\t | bytes: %d\n", k, v.TotalBytes)
 			states = append(states, StateUnknown)

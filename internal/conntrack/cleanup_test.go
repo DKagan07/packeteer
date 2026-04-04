@@ -18,13 +18,13 @@ func TestCleanup_RemoveStaleConnection(t *testing.T) {
 	staleKey := ConnKey("stale")
 	freshKey := ConnKey("fresh")
 
-	tracker.connections[staleKey] = &Connection{
+	tracker.Connections[staleKey] = &Connection{
 		TimeLastSeen: now.Add(-60 * time.Second),
 	}
-	tracker.connections[freshKey] = &Connection{
+	tracker.Connections[freshKey] = &Connection{
 		TimeLastSeen: now.Add(-5 * time.Second),
 	}
-	assert.Len(t, tracker.connections, 2)
+	assert.Len(t, tracker.Connections, 2)
 
 	timeChan := make(chan time.Time, 1)
 	go m.Cleanup(ctx, timeChan, &tracker)
@@ -36,8 +36,8 @@ func TestCleanup_RemoveStaleConnection(t *testing.T) {
 	tracker.mu.RLock()
 	defer tracker.mu.RUnlock()
 
-	assert.NotContains(t, tracker.connections, staleKey)
-	assert.Contains(t, tracker.connections, freshKey)
+	assert.NotContains(t, tracker.Connections, staleKey)
+	assert.Contains(t, tracker.Connections, freshKey)
 }
 
 func TestIsLongestLiving_SetsWhenNil(t *testing.T) {
@@ -142,12 +142,12 @@ func TestCleanup_PopulatesStatsOnTick(t *testing.T) {
 	tracker := NewTracker()
 	now := time.Now()
 
-	tracker.connections[ConnKey("short-lived")] = &Connection{
+	tracker.Connections[ConnKey("short-lived")] = &Connection{
 		TimeStart:    now.Add(-5 * time.Second),
 		TimeLastSeen: now,
 		TotalBytes:   100,
 	}
-	tracker.connections[ConnKey("long-lived")] = &Connection{
+	tracker.Connections[ConnKey("long-lived")] = &Connection{
 		TimeStart:    now.Add(-30 * time.Second),
 		TimeLastSeen: now,
 		TotalBytes:   1000,

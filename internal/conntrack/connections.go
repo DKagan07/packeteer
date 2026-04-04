@@ -68,14 +68,14 @@ func (s TCPState) String() string {
 // map is protected by a RWMutex, to prevent any race conditions
 type Tracker struct {
 	mu          sync.RWMutex
-	connections map[ConnKey]*Connection
+	Connections map[ConnKey]*Connection
 }
 
 // NewTracker returns a new Tracker object
 func NewTracker() Tracker {
 	m := map[ConnKey]*Connection{}
 	return Tracker{
-		connections: m,
+		Connections: m,
 	}
 }
 
@@ -89,7 +89,7 @@ func (t *Tracker) UpdateTracker(p *packet.PacketInfo) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	con := t.connections
+	con := t.Connections
 
 	key := ConnKey(
 		fmt.Sprintf(ConnKeyStringFormat, p.SrcIP, p.SrcPort, p.DestIP, p.DestPort, p.Protocol),

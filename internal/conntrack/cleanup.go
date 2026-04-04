@@ -27,13 +27,13 @@ func (m *model) Cleanup(ctx context.Context, timeChan <-chan time.Time, conns *T
 		case tick := <-timeChan:
 			conns.mu.Lock()
 			tickTime := tick.UTC()
-			for k, v := range conns.connections {
+			for k, v := range conns.Connections {
 				m.isLongestLiving(string(k), v)
 				m.isMostData(string(k), v)
 
 				tls := v.TimeLastSeen.UTC()
 				if tls.Before(tickTime.Add(-StaleTime)) {
-					delete(conns.connections, k)
+					delete(conns.Connections, k)
 				}
 			}
 			conns.mu.Unlock()

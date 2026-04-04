@@ -31,7 +31,7 @@ func TestModelUpdate_PacketCapture(t *testing.T) {
 	assert.NotNil(t, cmd)
 
 	um := updated.(*model)
-	conn := um.tracker.connections
+	conn := um.tracker.Connections
 	assert.Len(t, conn, 1)
 
 	key := fmt.Sprintf(
@@ -86,7 +86,7 @@ func TestModelView_ShowsTCPConnections(t *testing.T) {
 	assert.NotNil(t, cmd)
 
 	um := updated.(*model)
-	conn := um.tracker.connections
+	conn := um.tracker.Connections
 	assert.Len(t, conn, 1)
 
 	v := m.View()
@@ -125,7 +125,7 @@ func TestModelView_ShowsUDPConnections(t *testing.T) {
 	assert.NotNil(t, cmd)
 
 	um := updated.(*model)
-	conn := um.tracker.connections
+	conn := um.tracker.Connections
 	assert.Len(t, conn, 1)
 
 	v := m.View()

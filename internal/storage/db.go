@@ -76,7 +76,18 @@ func migrate(db *sql.DB) error {
           );
           CREATE INDEX IF NOT EXISTS idx_dns_queries_query_name ON dns_queries(query_name);
           CREATE INDEX IF NOT EXISTS idx_dns_queries_source_ip ON dns_queries(source_ip);
+
+		  CREATE TABLE IF NOT EXISTS alerts (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp DATETIME NOT NULL,
+			rule_name TEXT NOT NULL,
+			severity TExT NOT NULL,
+			details TEXT
+		  );
       `)
+	// Store alerts in the database with timestamp, rule name, severity, and
+	// relevant details.
+
 	return err
 }
 
@@ -93,7 +104,23 @@ func InsertDNSEntry(
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8);`,
 		time, srcIP, queryName, queryType, cnamePath, responseIPs, responseType, eventNum)
 	if err != nil {
-		log.Printf("cannot insert: %v", err)
+		log.Printf("cannot insert into dns table: %v", err)
+		return err
+	}
+	return nil
+}
+
+func InsertAlert(
+	sqlDb *sql.DB,
+	time, ruleName, severity, details string,
+) error {
+	_, err := sqlDb.Exec(`
+		INSERT INTO alerts
+		(timestamp, rule_name, severity, details)
+		VALUES ($1, $2, $3, $4);`,
+		time, ruleName, severity, details)
+	if err != nil {
+		log.Printf("cannot insert into alerts table: %v", err)
 		return err
 	}
 	return nil
