@@ -24,11 +24,13 @@ func TestOpenDb_CreatesTables(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	var name string
-	row := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='dns_queries'")
-	err = row.Scan(&name)
-	require.NoError(t, err)
-	assert.Equal(t, "dns_queries", name)
+	for _, table := range []string{"dns_queries", "alerts"} {
+		var name string
+		row := db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name=?", table)
+		err = row.Scan(&name)
+		require.NoError(t, err, "table %q not found", table)
+		assert.Equal(t, table, name)
+	}
 }
 
 func TestOpenDb_InvalidPath(t *testing.T) {
@@ -225,6 +227,126 @@ func TestInsertDNSEntry_EmptyOptionalFields(t *testing.T) {
 		2,
 	)
 	assert.NoError(t, err)
+}
+
+// ******************************
+// InsertAlert
+// ******************************
+
+func TestInsertAlert(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertAlert(
+		db,
+		"2024-01-01 00:00:00",
+		"PortScan",
+		"high",
+		"scan detected from 192.168.0.1",
+	)
+	assert.NoError(t, err)
+}
+
+func TestInsertAlert_VerifyFields(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertAlert(
+		db,
+		"2024-01-01T12:30:00Z",
+		"PortScan",
+		"high",
+		"scan detected from 192.168.0.1",
+	)
+	require.NoError(t, err)
+
+	var timestamp, ruleName, severity, details string
+	row := db.QueryRow(
+		"SELECT timestamp, rule_name, severity, details FROM alerts LIMIT 1",
+	)
+	err = row.Scan(&timestamp, &ruleName, &severity, &details)
+	require.NoError(t, err)
+
+	assert.Equal(t, "2024-01-01T12:30:00Z", timestamp)
+	assert.Equal(t, "PortScan", ruleName)
+	assert.Equal(t, "high", severity)
+	assert.Equal(t, "scan detected from 192.168.0.1", details)
+}
+
+func TestInsertAlert_MultipleEntries(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	alerts := []struct {
+		time     string
+		ruleName string
+		severity string
+		details  string
+	}{
+		{"2024-01-01 00:00:00", "PortScan", "high", "scan from 10.0.0.1"},
+		{"2024-01-01 00:01:00", "PortScan", "high", "scan from 10.0.0.2"},
+		{"2024-01-01 00:02:00", "DNSTunnel", "medium", "suspicious DNS traffic"},
+	}
+
+	for _, a := range alerts {
+		err := InsertAlert(db, a.time, a.ruleName, a.severity, a.details)
+		assert.NoError(t, err)
+	}
+
+	var count int
+	row := db.QueryRow("SELECT COUNT(*) FROM alerts")
+	err = row.Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+}
+
+func TestInsertAlert_EmptyDetails(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	err = InsertAlert(
+		db,
+		"2024-01-01 00:00:00",
+		"PortScan",
+		"low",
+		"",
+	)
+	assert.NoError(t, err)
+}
+
+func TestInsertAlert_AutoIncrementsId(t *testing.T) {
+	db, err := OpenDb(t.TempDir() + "/test.db")
+	require.NoError(t, err)
+	defer db.Close()
+
+	for i := range 3 {
+		err = InsertAlert(
+			db,
+			fmt.Sprintf("2024-01-01 00:0%d:00", i),
+			"PortScan",
+			"high",
+			"details",
+		)
+		require.NoError(t, err)
+	}
+
+	rows, err := db.Query("SELECT id FROM alerts ORDER BY id")
+	require.NoError(t, err)
+
+	var ids []int
+	for rows.Next() {
+		var id int
+		require.NoError(t, rows.Scan(&id))
+		ids = append(ids, id)
+	}
+	require.Len(t, ids, 3)
+	assert.Equal(t, 1, ids[0])
+	assert.Equal(t, 2, ids[1])
+	assert.Equal(t, 3, ids[2])
 }
 
 // ******************************
