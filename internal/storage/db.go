@@ -81,7 +81,7 @@ func migrate(db *sql.DB) error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp DATETIME NOT NULL,
 			rule_name TEXT NOT NULL,
-			severity TExT NOT NULL,
+			severity TEXT NOT NULL,
 			details TEXT
 		  );
       `)
