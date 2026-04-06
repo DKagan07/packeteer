@@ -48,7 +48,7 @@ func (r *RuleDetection) Read() {
 		r.RulePortScanning(pi)
 		r.RuleDnsTunnling()
 		r.RuleBeaconing()
-		r.RuleLargeOutboundData()
+		r.RuleLargeOutboundData(pi)
 	}
 }
 
@@ -163,7 +163,71 @@ func (r *RuleDetection) RuleBeaconing() {}
    IP you've never seen before is more alarming. For a learning project, starting with just the ratio + absolute threshold
   is perfectly fine.
 */
-func (r *RuleDetection) RuleLargeOutboundData() {
+func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			pi.SrcIP,
+			pi.SrcPort,
+			pi.DestIP,
+			pi.DestPort,
+			pi.Protocol,
+		),
+	)
+
+	conns := r.tracker.Connections
+	v, ok := conns[key]
+	if !ok {
+		return
+	}
+
+	now := time.Now()
+
+	// ratio check
+	rec := v.BytesReceived
+	sent := v.BytesSent
+
+	if sent > 0 && float64(rec)/float64(sent) >= 10.0 {
+		desc := fmt.Sprintf(
+			"RATIO: IP %s sending large, asymmetrical data to %s, (%d)bytes",
+			v.SrcIP,
+			v.DstIP,
+			v.BytesReceived,
+		)
+		storage.InsertAlert(
+			r.db,
+			now.UTC().Format(time.RFC3339),
+			AlertLargeOutboundData.String(),
+			SeverityCritical.String(),
+			desc,
+		)
+
+		// trigger alert
+		return
+	}
+
+	// checking total outbound data
+	// NOTE: this might trigger for long sessions, as this isn't time-gated
+	// TODO: Implement time-gating
+	if rec > MaxBytesReceived {
+		desc := fmt.Sprintf(
+			"AMOUNT: IP %s sending large amounts of data to %s, (%d)bytes",
+			v.SrcIP,
+			v.DstIP,
+			v.BytesReceived,
+		)
+
+		storage.InsertAlert(
+			r.db,
+			now.UTC().Format(time.RFC3339),
+			AlertLargeOutboundData.String(),
+			SeverityCritical.String(),
+			desc,
+		)
+
+		// trigger alert
+		return
+	}
 }
 
 // BuildStorage builds up the maps and strucutres necessary for defining and
@@ -181,7 +245,23 @@ func (r *RuleDetection) BuildStorage(pi *packet.PacketInfo) {
 		),
 	)
 
+	oppositeKey := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			pi.DestIP,
+			pi.DestPort,
+			pi.SrcIP,
+			pi.SrcPort,
+			pi.Protocol,
+		),
+	)
+
 	if v, ok := r.tracker.Connections[key]; ok {
+		v.BytesReceived += int64(pi.CaptureLength)
+		v.TotalBytes += int64(pi.CaptureLength)
+		v.TimeLastSeen = pi.Timestamp
+	} else if v, ok := r.tracker.Connections[oppositeKey]; ok {
+		v.BytesSent += int64(pi.CaptureLength)
 		v.TotalBytes += int64(pi.CaptureLength)
 		v.TimeLastSeen = pi.Timestamp
 	} else {

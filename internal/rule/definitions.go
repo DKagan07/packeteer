@@ -37,7 +37,7 @@ var (
 	AlertPortScan          AlertName = "AlertPortScan"
 	AlertDnsTunneling      AlertName = "AlertDNSTunnling"
 	AlertBeaconing         AlertName = "AlertBeaconing"
-	AlertLargeOutboundData AlertName = "LargeOutboundData"
+	AlertLargeOutboundData AlertName = "AlertLargeOutboundData"
 )
 
 // String stringifies the name of the alert
