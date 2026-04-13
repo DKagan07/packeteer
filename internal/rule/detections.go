@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"packeteer/internal/conntrack"
@@ -45,8 +46,10 @@ func (r *RuleDetection) Read() {
 	for pi := range r.rulesChan {
 		r.BuildStorage(pi)
 
+		if pi.DnsInfo != nil {
+			r.RuleDnsTunnling(pi.DnsInfo.QueryName)
+		}
 		r.RulePortScanning(pi)
-		r.RuleDnsTunnling()
 		r.RuleBeaconing()
 		r.RuleLargeOutboundData(pi)
 	}
@@ -114,7 +117,48 @@ func sortPorts(ports []string) {
   unique subdomains under the same parent domain in a minute is suspicious (e.g., aaa.evil.com, bbb.evil.com,
   ccc.evil.com...).
 */
-func (r *RuleDetection) RuleDnsTunnling() {}
+func (r *RuleDetection) RuleDnsTunnling(queryDomain string) {
+	now := time.Now()
+	domainParts := strings.Split(queryDomain, ".")
+
+	if len(queryDomain) >= MaxTotalQueryName {
+		desc := fmt.Sprintf(
+			"Query Domain %s is long",
+			queryDomain,
+		)
+		storage.InsertAlert(
+			r.db,
+			now.UTC().Format(time.RFC3339),
+			AlertDnsTunneling.String(),
+			SeverityHigh.String(),
+			desc,
+		)
+		// TODO: trigger alert
+	}
+
+	if len(domainParts) == 2 { // no subdomain
+		return
+	}
+
+	for i := 0; i < len(domainParts)-2; i++ { // checking all subdomains
+		subdomain := domainParts[i]
+
+		if len(subdomain) >= MaxSubdomainLength {
+			desc := fmt.Sprintf(
+				"Query Subdomain %s is sketchy",
+				subdomain,
+			)
+			storage.InsertAlert(
+				r.db,
+				now.UTC().Format(time.RFC3339),
+				AlertDnsTunneling.String(),
+				SeverityHigh.String(),
+				desc,
+			)
+			// TODO: trigger alert
+		}
+	}
+}
 
 // Beaconing detection — look for connections that recur at regular intervals.
 // Calculate time deltas between connections to the same destination and flag
@@ -202,7 +246,7 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 			desc,
 		)
 
-		// trigger alert
+		// TODO: trigger alert
 		return
 	}
 
@@ -225,7 +269,7 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 			desc,
 		)
 
-		// trigger alert
+		// TODO: trigger alert
 		return
 	}
 }
@@ -256,6 +300,7 @@ func (r *RuleDetection) BuildStorage(pi *packet.PacketInfo) {
 		),
 	)
 
+	// building tracker
 	if v, ok := r.tracker.Connections[key]; ok {
 		v.BytesReceived += int64(pi.CaptureLength)
 		v.TotalBytes += int64(pi.CaptureLength)

@@ -180,6 +180,7 @@ func TestExtractPacketInfo_TCP_IPv4(t *testing.T) {
 	assert.Equal("54321", pi.SrcPort)
 	assert.Equal("11117", pi.DestPort)
 	assert.Equal(TCPFlags{}, pi.TCPFlags)
+	assert.Nil(pi.DnsInfo)
 }
 
 func TestExtractPacketInfo_TCP_Flags(t *testing.T) {
@@ -246,6 +247,7 @@ func TestExtractPacketInfo_UDP(t *testing.T) {
 	assert.Equal("192.168.0.2", pi.DestIP)
 	assert.Equal("54321", pi.SrcPort)
 	assert.Equal("11117", pi.DestPort)
+	assert.Nil(pi.DnsInfo)
 }
 
 func TestExtractPacketInfo_ICMPv4(t *testing.T) {
@@ -389,9 +391,12 @@ func TestExtractPacketInfo_DNS(t *testing.T) {
 	)
 
 	testPacket := gopacket.NewPacket(buf.Bytes(), layers.LayerTypeDNS, gopacket.Default)
-	_, dnsInfo := ExtractPacketInfo(testPacket)
+	pi, dnsInfo := ExtractPacketInfo(testPacket)
 	assert.NotNil(dnsInfo)
 	assert.NotEmpty(dnsInfo.Time)
+	assert.NotNil(pi)
+	assert.Equal(PacketProtocol("DNS"), pi.Protocol)
+	assert.NotNil(pi.DnsInfo)
 }
 
 // ******************************

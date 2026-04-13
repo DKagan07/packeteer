@@ -23,6 +23,7 @@ type PacketInfo struct {
 	DestIP        string
 	DestPort      string
 	Protocol      PacketProtocol
+	DnsInfo       *dns.DNSInfo
 
 	TCPFlags TCPFlags
 }
@@ -85,6 +86,7 @@ func ExtractPacketInfo(p gopacket.Packet) (*PacketInfo, *dns.DNSInfo) {
 		case layers.LayerTypeDNS:
 			pi.Protocol = DNS
 			dnsInfo = dns.DecodeDNSPacket(l, pi.SrcIP, md.Timestamp.Format(time.RFC3339))
+			pi.DnsInfo = dnsInfo
 
 		case layers.LayerTypeTCP:
 			tcp := l.(*layers.TCP)

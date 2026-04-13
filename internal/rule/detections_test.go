@@ -306,3 +306,191 @@ func TestRuleLargeOutboundData_NoAlert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
+
+func TestRuleDnsTunnling_NoSubDomain_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	goodDnsQuery := "notevil.com"
+
+	rd.RuleDnsTunnling(goodDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleDnsTunnling_SubDomain_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	goodDnsQuery := "notevil.example.com"
+
+	rd.RuleDnsTunnling(goodDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleDnsTunnling_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	evilDnsQuery := "ddKDHdksdhfslDFHSDJFHlkdjfsdfLSDJFHGhpcyBpcyBlbmNvZGVkIGRhdGEdjdfkdnfdsk3.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleDnsTunnling_MultipleSubDomain_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	evilDnsQuery := "totallyevil.ddKDHdksdhfslDFHSDJFHlkdjfsdfLSDJFHGhpcyBpcyBlbmNvZGVk.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleDnsTunnling_TotalDomainLength_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	evilDnsQuery := "totallyevilneedlengthtobeoverhundoyeahyeahnah.ddKDHdksdhfslDFHSDJFHlkdjfsdfLSDJFHGhpcyBpcyBlbmNvZGVk.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+}
+
+func TestRuleDnsTunnling_TotalDomainLengthOnly_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Total length >= 100, but no single subdomain >= 52 chars
+	evilDnsQuery := "short1.short2.short3.short4.short5.short6.short7.short8.short9.short10.short11.short12abcdef.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleDnsTunnling_MultipleLongSubdomains_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Two subdomains each >= 52 chars, simulating data split across labels
+	// Total is also >= 100, so triggers 3 alerts: 1 total length + 2 subdomain
+	evilDnsQuery := "aGVsbG8gdGhpcyBpcyBlbmNvZGVkIGRhdGEgaW4gYmFzZTY0Zm9y.c2Vjb25kIGxhYmVsIHdpdGggbW9yZSBlbmNvZGVkIGRhdGFoZXJl.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 3, count)
+}
+
+func TestRuleDnsTunnling_SubdomainBoundary52_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Subdomain of exactly 52 chars — should alert
+	evilDnsQuery := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleDnsTunnling_SubdomainBoundary51_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Subdomain of exactly 51 chars — should not alert
+	goodDnsQuery := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY.evil.com"
+
+	rd.RuleDnsTunnling(goodDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleDnsTunnling_TotalLengthBoundary100_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Total length of exactly 100 chars -- should alert
+	evilDnsQuery := "short.short2.short3.short4.short5.short6.short7.short8.short9.short10.short11.short12abcdef.evil.com"
+
+	rd.RuleDnsTunnling(evilDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleDnsTunnling_TotalLengthBoundary99_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Total length of exactly 99 chars — should not alert
+	goodDnsQuery := "short.short2.short3.short4.short5.short6.short7.short8.short9.short10.short11.short12abcde.evil.com"
+
+	rd.RuleDnsTunnling(goodDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleDnsTunnling_ManyShortSubdomains_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	// Many short subdomains, total under 100, none >= 52 chars
+	goodDnsQuery := "aa.bb.cc.dd.ee.ff.gg.hh.evil.com"
+
+	rd.RuleDnsTunnling(goodDnsQuery)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
