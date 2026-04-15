@@ -494,3 +494,447 @@ func TestRuleDnsTunnling_ManyShortSubdomains_NoAlert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
+
+func TestRuleBeaconing_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 60),
+		now.Add(-time.Second * 50),
+		now.Add(-time.Second * 30),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleBeaconing_NoTime_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleBeaconing_BelowThreshold_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 90),
+		now.Add(-time.Second * 60),
+		now.Add(-time.Second * 30),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleBeaconing_OutsideWindow_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Minute * 40),
+		now.Add(-time.Minute * 35),
+		now.Add(-time.Minute * 30),
+		now.Add(-time.Minute * 25),
+		now.Add(-time.Minute * 20),
+		now.Add(-time.Minute * 15),
+		now.Add(-time.Minute * 10),
+		now.Add(-time.Minute * 5),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleBeaconing_30sIntervals_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 240),
+		now.Add(-time.Second * 210),
+		now.Add(-time.Second * 180),
+		now.Add(-time.Second * 150),
+		now.Add(-time.Second * 120),
+		now.Add(-time.Second * 90),
+		now.Add(-time.Second * 60),
+		now.Add(-time.Second * 30),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleBeaconing_30sIntervalsWithinVariance_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 239),
+		now.Add(-time.Second * 211),
+		now.Add(-time.Second * 181),
+		now.Add(-time.Second * 150),
+		now.Add(-time.Second * 119),
+		now.Add(-time.Second * 90),
+		now.Add(-time.Second * 59),
+		now.Add(-time.Second * 30),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleBeaconing_45sIntervals_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 450),
+		now.Add(-time.Second * 405),
+		now.Add(-time.Second * 360),
+		now.Add(-time.Second * 315),
+		now.Add(-time.Second * 270),
+		now.Add(-time.Second * 225),
+		now.Add(-time.Second * 180),
+		now.Add(-time.Second * 135),
+		now.Add(-time.Second * 90),
+		now.Add(-time.Second * 45),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleBeaconing_30sIntervals_MiddleOfCapture_Alert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 304),
+		now.Add(-time.Second * 245),
+		now.Add(-time.Second * 240),
+		now.Add(-time.Second * 210),
+		now.Add(-time.Second * 180),
+		now.Add(-time.Second * 150),
+		now.Add(-time.Second * 120),
+		now.Add(-time.Second * 90),
+		now.Add(-time.Second * 60),
+		now.Add(-time.Second * 30),
+		now.Add(-time.Second * 15),
+		now.Add(-time.Second * 8),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestRuleBeaconing_TwoShortClusters_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+
+	now := time.Now()
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			packet.SrcIP,
+			packet.SrcPort,
+			packet.DestIP,
+			packet.DestPort,
+			packet.Protocol,
+		),
+	)
+
+	bt := make(map[conntrack.ConnKey][]time.Time)
+	rd.beaconTimes = bt
+	rd.beaconTimes[key] = []time.Time{
+		now.Add(-time.Second * 430),
+		now.Add(-time.Second * 400),
+		now.Add(-time.Second * 370),
+		now.Add(-time.Second * 340),
+		now.Add(-time.Second * 240),
+		now.Add(-time.Second * 180),
+		now.Add(-time.Second * 120),
+		now.Add(-time.Second * 60),
+		now.Add(-time.Second * 0),
+	}
+
+	rd.RuleBeaconing(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}
+
+func TestPruneBeaconTimes(t *testing.T) {
+	now := time.Now()
+
+	times := []time.Time{
+		now.Add(-time.Minute * 30), // pruned
+		now.Add(-time.Minute * 25), // pruned
+		now.Add(-time.Minute * 20), // boundary: exactly at cutoff, not pruned (Before is strict)
+		now.Add(-time.Minute * 15),
+		now.Add(-time.Minute * 10),
+		now.Add(-time.Minute * 5),
+		now,
+	}
+
+	pruned := pruneBeaconTimes(times, now)
+
+	assert.Len(t, pruned, 5)
+	assert.Equal(t, now.Add(-time.Minute*20), pruned[0])
+}
+
+func TestPruneBeaconTimes_AllStale(t *testing.T) {
+	now := time.Now()
+
+	times := []time.Time{
+		now.Add(-time.Minute * 60),
+		now.Add(-time.Minute * 50),
+		now.Add(-time.Minute * 40),
+	}
+
+	pruned := pruneBeaconTimes(times, now)
+
+	assert.Len(t, pruned, 0)
+}
+
+func TestPruneBeaconTimes_NoneStale(t *testing.T) {
+	now := time.Now()
+
+	times := []time.Time{
+		now.Add(-time.Minute * 10),
+		now.Add(-time.Minute * 5),
+		now,
+	}
+
+	pruned := pruneBeaconTimes(times, now)
+
+	assert.Len(t, pruned, 3)
+	assert.Equal(t, times[0], pruned[0])
+}

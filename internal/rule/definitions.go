@@ -28,6 +28,11 @@ const (
 
 	MaxBytesReceived    = 50000000 // bytes, 50mb, in a single connection
 	MaxRatioTransferred = 10.0     // ratio of data from src->dest
+
+	MinBeaconingAmount     = 5    // how many times a specific interval is hit to trigger an alarm
+	BeaconingWindow        = 15   // minutes
+	BeaconingBufferPercent = 0.15 // 15% tolerance for interval comparison
+	BeaconingPruneWindow   = 20   // minutes; prune timestamps older than this
 )
 
 // AlertName defines the name of the alert

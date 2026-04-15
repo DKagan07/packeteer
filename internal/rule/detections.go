@@ -3,18 +3,18 @@ package rule
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
+
 	"packeteer/internal/conntrack"
 	"packeteer/internal/packet"
 	"packeteer/internal/storage"
 )
-
-// NOTE: Store alerts in the database with timestamp, rule name, severity, and
-// relevant details.
 
 // RuleDetection defines the components needed to rules definition, enforcement,
 // and storage of those rules
@@ -50,16 +50,13 @@ func (r *RuleDetection) Read() {
 			r.RuleDnsTunnling(pi.DnsInfo.QueryName)
 		}
 		r.RulePortScanning(pi)
-		r.RuleBeaconing()
+		r.RuleBeaconing(pi)
 		r.RuleLargeOutboundData(pi)
 	}
 }
 
-// Port scan detection — track how many distinct destination ports each source
-// IP touches in a time window. If it exceeds a threshold, alert.
-// Low severity
-// NOTE: there's a duplication problem: every packet that comes in that matches
-// will trigger the alert -- I think that's fine
+// RulePortScanning alerts when a source IP contacts more than MaxPortConnections
+// distinct ports on a destination within MaxPortTime. Severity: low.
 func (r *RuleDetection) RulePortScanning(pi *packet.PacketInfo) {
 	now := time.Now()
 	thirtySecondsAgo := now.Add(-MaxPortTime)
@@ -101,22 +98,9 @@ func sortPorts(ports []string) {
 	})
 }
 
-// DNS tunneling suspicion — flag DNS queries where the subdomain portion is
-// unusually long (entropy analysis is a bonus here) or where query volume to a
-// single domain is abnormally high.
-// High severity
-/*
-*   DNS Tunneling — Subdomain Length
-
-  - Threshold: subdomain labels longer than 52 characters, or total query name longer than 100 characters
-  - Normal subdomains are short: www, mail, api, us-east-1. Rarely more than 20–30 characters per label.
-  - DNS tunneling tools (iodine, dnscat2) encode data in the subdomain, producing names like
-  dGhpcyBpcyBlbmNvZGVkIGRhdGE.evil.com. The encoded payloads easily push individual labels past 50 characters.
-  - The DNS spec allows up to 63 characters per label and 253 total — tunneling tools push right up against these limits.
-  - Bonus metric if you want it later: high query volume to a single domain. Normal DNS is bursty — a host resolving 50+
-  unique subdomains under the same parent domain in a minute is suspicious (e.g., aaa.evil.com, bbb.evil.com,
-  ccc.evil.com...).
-*/
+// RuleDnsTunnling flags DNS queries with unusually long subdomain labels
+// (>= MaxSubdomainLength) or total query names (>= MaxTotalQueryName), which
+// are indicative of data exfiltration via DNS tunneling. Severity: high.
 func (r *RuleDetection) RuleDnsTunnling(queryDomain string) {
 	now := time.Now()
 	domainParts := strings.Split(queryDomain, ".")
@@ -133,7 +117,7 @@ func (r *RuleDetection) RuleDnsTunnling(queryDomain string) {
 			SeverityHigh.String(),
 			desc,
 		)
-		// TODO: trigger alert
+		PrintAlert(desc, SeverityHigh)
 	}
 
 	if len(domainParts) == 2 { // no subdomain
@@ -155,58 +139,105 @@ func (r *RuleDetection) RuleDnsTunnling(queryDomain string) {
 				SeverityHigh.String(),
 				desc,
 			)
-			// TODO: trigger alert
+			PrintAlert(desc, SeverityHigh)
 		}
 	}
 }
 
-// Beaconing detection — look for connections that recur at regular intervals.
-// Calculate time deltas between connections to the same destination and flag
-// if they're suspiciously consistent.
-// High severity
-/* More info:
-Beaconing — Interval Consistency
+// RuleBeaconing detects connections to the same destination that recur at
+// suspiciously regular intervals (within BeaconingBufferPercent jitter),
+// requiring at least MinBeaconingAmount samples inside BeaconingWindow.
+// Severity: high.
+func (r *RuleDetection) RuleBeaconing(pi *packet.PacketInfo) {
+	// current ConnKey
+	key := conntrack.ConnKey(
+		fmt.Sprintf(
+			conntrack.ConnKeyStringFormat,
+			pi.SrcIP,
+			pi.SrcPort,
+			pi.DestIP,
+			pi.DestPort,
+			pi.Protocol,
+		),
+	)
 
-This one isn't about a single threshold value — it's about regularity of timing.
+	times, ok := r.beaconTimes[key]
+	if !ok {
+		return
+	}
 
-- Approach: collect timestamps for connections to the same destination, compute the
-deltas between them, then check the standard deviation (or just the spread) of those
-deltas.
-- Threshold: if the standard deviation of deltas is less than ~10–15% of the mean
-interval, flag it.
-  - Example: a host connects to 1.2.3.4 every 60s ± 3s → mean=60, stddev=3, ratio=5% →
+	if len(times) <= MinBeaconingAmount+2 {
+		return
+	}
 
-suspicious.
-  - A human browsing the same site will have wildly irregular intervals (ratio >50%).
+	interval := float64(0)
+	beaconingTimes := []time.Time{}
+	for i := 1; i < len(times); i++ {
+		firstT := times[i-1]
+		secondT := times[i]
 
-- Minimum sample size: require at least 5–10 callbacks before evaluating — you can't
-judge regularity from 2 connections.
-- Time window: 10–15 minutes. Short enough to catch fast beacons (every 30s–2min), long
-enough to collect enough samples.
-- Common C2 beacon intervals: 30s, 60s, 5min. Some use jitter to evade this exact
-detection, but basic implants don't.
-*/
-func (r *RuleDetection) RuleBeaconing() {}
+		in := secondT.Sub(firstT).Seconds()
 
-// Large outbound transfer — alert when a connection sends significantly more
-// data outbound than it receives, especially to an unusual destination.
-// Critical severity
-/* More info:
-*  Large Outbound Data
+		if interval != 0 && compareTimeWithBuffer(in, interval) {
+			beaconingTimes = append(beaconingTimes, firstT)
 
-  This is where BytesReceived (src→dst, i.e., outbound) is the right field — not TotalBytes, because you care about the
-  asymmetry. A video call sends a lot of data in both directions; exfiltration sends a lot in one direction.
+			if len(beaconingTimes) >= MinBeaconingAmount &&
+				withinWindow(beaconingTimes[0], secondT) {
+				desc := fmt.Sprintf(
+					"IP %s connecting to %s at regular occurrences",
+					pi.SrcIP,
+					pi.DestIP,
+				)
+				storage.InsertAlert(
+					r.db,
+					time.Now().UTC().Format(time.RFC3339),
+					AlertBeaconing.String(),
+					SeverityHigh.String(),
+					desc,
+				)
+				PrintAlert(desc, SeverityHigh)
+				return
+			}
+		}
 
-  - Threshold: flag when BytesReceived (outbound) exceeds 50–100 MB on a single connection, OR when the ratio of outbound to
-   inbound is greater than ~10:1 on a connection with meaningful volume (say, >5 MB outbound).
-  - The ratio check is the more useful signal. A connection that sent 50 MB but received only 200 KB of commands back is far
-   more suspicious than one that transferred 50 MB in each direction.
-  - Track this per connection (per ConnKey), not per packet. Individual packets are capped at ~1500 bytes (MTU), so
-  per-packet size is not meaningful for exfiltration detection.
-  - Time component: you could also check rate — 50 MB over an hour might be normal cloud sync, but 50 MB in 30 seconds to an
-   IP you've never seen before is more alarming. For a learning project, starting with just the ratio + absolute threshold
-  is perfectly fine.
-*/
+		if !compareTimeWithBuffer(in, interval) {
+			beaconingTimes = []time.Time{}
+		}
+
+		interval = in
+	}
+}
+
+// compareTimeWithBuffer returns whether or not the current interval is within
+// `BeaconingBufferPercent` of the previous (established) interval
+func compareTimeWithBuffer(currInterval, prevInterval float64) bool {
+	upper := prevInterval + (prevInterval * BeaconingBufferPercent)
+	lower := prevInterval - (prevInterval * BeaconingBufferPercent)
+
+	return lower <= currInterval && currInterval <= upper
+}
+
+// withinWindow is a comparison function that will determine if there are at
+// least `MinBeaconingAmount` of equal intervals within a specific time window
+func withinWindow(firstBeaconingTime, currTimeInterval time.Time) bool {
+	return firstBeaconingTime.Add(time.Minute * BeaconingWindow).After(currTimeInterval)
+}
+
+// pruneBeaconTimes removes timestamps older than BeaconingPruneWindow from the
+// front of the slice. Timestamps are in chronological order, so it finds the
+// first index still within the window and reslices.
+func pruneBeaconTimes(times []time.Time, now time.Time) []time.Time {
+	cutoff := now.Add(-time.Minute * BeaconingPruneWindow)
+	i := 0
+	for i < len(times) && times[i].Before(cutoff) {
+		i++
+	}
+	return times[i:]
+}
+
+// RuleLargeOutboundData alerts on connections with a high outbound-to-inbound
+// byte ratio (>= 10:1) or total outbound bytes exceeding MaxBytesReceived,
+// both of which may indicate data exfiltration. Severity: critical.
 func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 	key := conntrack.ConnKey(
 		fmt.Sprintf(
@@ -246,7 +277,7 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 			desc,
 		)
 
-		// TODO: trigger alert
+		PrintAlert(desc, SeverityCritical)
 		return
 	}
 
@@ -269,7 +300,7 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 			desc,
 		)
 
-		// TODO: trigger alert
+		PrintAlert(desc, SeverityCritical)
 		return
 	}
 }
@@ -327,7 +358,7 @@ func (r *RuleDetection) BuildStorage(pi *packet.PacketInfo) {
 	// build beacon times
 	if v, ok := r.beaconTimes[key]; ok {
 		v = append(v, pi.Timestamp)
-		r.beaconTimes[key] = v
+		r.beaconTimes[key] = pruneBeaconTimes(v, pi.Timestamp)
 	} else {
 		r.beaconTimes[key] = []time.Time{pi.Timestamp}
 	}
@@ -341,4 +372,13 @@ func (r *RuleDetection) BuildStorage(pi *packet.PacketInfo) {
 			pi.DestPort: pi.Timestamp,
 		}
 	}
+}
+
+// PrintAlert is the current way that an alert will be triggered - it will be
+// printed to stderr, stylized by lipgloss
+func PrintAlert(alertDesc string, severity AlertSeverity) {
+	s := fmt.Sprintf("[%s] %s", strings.ToUpper(severity.String()), alertDesc)
+	style := lipgloss.NewStyle().Foreground(lipgloss.Red)
+	desc := style.Render(s)
+	fmt.Fprintln(os.Stderr, desc)
 }
