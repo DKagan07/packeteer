@@ -3,6 +3,8 @@ package storage
 import (
 	"database/sql"
 	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -41,6 +43,10 @@ type DNSEntry struct {
 
 // OpenDb opens and runs the migrations for the sqlite3 database
 func OpenDb(path string) (*sql.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+
 	sqldb, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_foreign_keys=on")
 	if err != nil {
 		log.Printf("opening")

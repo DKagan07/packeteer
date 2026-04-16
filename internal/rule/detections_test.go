@@ -144,7 +144,7 @@ func TestRulePortScanning_NoTriggerAlert_DueToTime(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
-func TestRuleLargeOutboundData_TriggerRatioAlert(t *testing.T) {
+func TestRuleLargeOutboundData_TriggerAlert(t *testing.T) {
 	db, packetChan := testSetup(t)
 	defer db.Close()
 
@@ -196,7 +196,7 @@ func TestRuleLargeOutboundData_TriggerRatioAlert(t *testing.T) {
 	assert.Equal(
 		t,
 		fmt.Sprintf(
-			"RATIO: IP %s sending large, asymmetrical data to %s, (%d)bytes",
+			"IP %s sending large, asymmetrical data to %s, (%d)bytes",
 			packet.SrcIP,
 			packet.DestIP,
 			50000000000,
@@ -205,7 +205,7 @@ func TestRuleLargeOutboundData_TriggerRatioAlert(t *testing.T) {
 	)
 }
 
-func TestRuleLargeOutboundData_TriggerAmountAlert(t *testing.T) {
+func TestRuleLargeOutboundData_LargeButSymmetric_NoAlert(t *testing.T) {
 	db, packetChan := testSetup(t)
 	defer db.Close()
 
@@ -240,30 +240,51 @@ func TestRuleLargeOutboundData_TriggerAmountAlert(t *testing.T) {
 
 	rd.RuleLargeOutboundData(packet)
 
-	var timestamp, rule_name, severity, details string
-	row := db.QueryRow(
-		"SELECT timestamp, rule_name, severity, details FROM alerts LIMIT 1",
-	)
-	err := row.Scan(
-		&timestamp,
-		&rule_name,
-		&severity,
-		&details,
-	)
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
 	require.NoError(t, err)
-	assert.Equal(t, now.UTC().Format(time.RFC3339), timestamp)
-	assert.Equal(t, "AlertLargeOutboundData", rule_name)
-	assert.Equal(t, "CRITICAL", severity)
-	assert.Equal(
-		t,
+	assert.Equal(t, 0, count)
+}
+
+func TestRuleLargeOutboundData_AsymmetricButSmall_NoAlert(t *testing.T) {
+	db, packetChan := testSetup(t)
+	defer db.Close()
+
+	rd := NewRuleDetection(packetChan, db)
+	now := time.Now()
+
+	packet := &packet.PacketInfo{
+		Timestamp: now,
+		SrcIP:     "10.10.10.10",
+		SrcPort:   "443",
+		DestIP:    "192.168.1.1",
+		DestPort:  "80",
+	}
+
+	key := conntrack.ConnKey(
 		fmt.Sprintf(
-			"AMOUNT: IP %s sending large amounts of data to %s, (%d)bytes",
-			packet.SrcIP,
-			packet.DestIP,
-			50000000000,
+			conntrack.ConnKeyStringFormat,
+			"10.10.10.10",
+			"443",
+			"192.168.1.1",
+			"80",
+			"",
 		),
-		details,
 	)
+	c := rd.tracker.Connections
+	c[key] = &conntrack.Connection{
+		SrcIP:         "10.10.10.10",
+		DstIP:         "192.168.1.1",
+		BytesReceived: 20000,
+		BytesSent:     43,
+	}
+
+	rd.RuleLargeOutboundData(packet)
+
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM alerts").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
 }
 
 func TestRuleLargeOutboundData_NoAlert(t *testing.T) {

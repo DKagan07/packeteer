@@ -259,13 +259,18 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 
 	now := time.Now()
 
-	// ratio check
 	rec := v.BytesReceived
 	sent := v.BytesSent
 
-	if sent > 0 && float64(rec)/float64(sent) >= 10.0 {
+	// Require both a large absolute amount and an asymmetric ratio. The amount
+	// gate filters out handshake-era bursts; the ratio gate filters out normal
+	// downloads where the server reply dwarfs the client.
+	// NOTE: not time-gated, so long sessions can still accumulate past the
+	// threshold.
+	// TODO: implement time-gating.
+	if rec > MaxBytesReceived && sent > 0 && float64(rec)/float64(sent) >= 10.0 {
 		desc := fmt.Sprintf(
-			"RATIO: IP %s sending large, asymmetrical data to %s, (%d)bytes",
+			"IP %s sending large, asymmetrical data to %s, (%d)bytes",
 			v.SrcIP,
 			v.DstIP,
 			v.BytesReceived,
@@ -279,30 +284,6 @@ func (r *RuleDetection) RuleLargeOutboundData(pi *packet.PacketInfo) {
 		)
 
 		PrintAlert(desc, SeverityCritical)
-		return
-	}
-
-	// checking total outbound data
-	// NOTE: this might trigger for long sessions, as this isn't time-gated
-	// TODO: Implement time-gating
-	if rec > MaxBytesReceived {
-		desc := fmt.Sprintf(
-			"AMOUNT: IP %s sending large amounts of data to %s, (%d)bytes",
-			v.SrcIP,
-			v.DstIP,
-			v.BytesReceived,
-		)
-
-		storage.InsertAlert(
-			r.db,
-			now.UTC().Format(time.RFC3339),
-			AlertLargeOutboundData.String(),
-			SeverityCritical.String(),
-			desc,
-		)
-
-		PrintAlert(desc, SeverityCritical)
-		return
 	}
 }
 
@@ -341,7 +322,11 @@ func (r *RuleDetection) BuildStorage(pi *packet.PacketInfo) {
 		v.BytesSent += int64(pi.CaptureLength)
 		v.TotalBytes += int64(pi.CaptureLength)
 		v.TimeLastSeen = pi.Timestamp
-	} else {
+	} else if pi.Protocol != packet.TCP || (pi.TCPFlags.SYN && !pi.TCPFlags.ACK) {
+		// For TCP, only create on the initial SYN so SrcIP is the initiator;
+		// otherwise mid-stream captures store the server as Src and normal
+		// downloads look like exfiltration. Non-TCP has no handshake to gate
+		// on, so fall back to first-seen.
 		r.tracker.Connections[key] = &conntrack.Connection{
 			Key:           key,
 			SrcIP:         pi.SrcIP,
