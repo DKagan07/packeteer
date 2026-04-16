@@ -87,6 +87,7 @@ func (r *RuleDetection) RulePortScanning(pi *packet.PacketInfo) {
 			desc,
 		)
 		// trigger alert
+		PrintAlert(desc, SeverityLow)
 	}
 }
 
