@@ -1,4 +1,4 @@
-package api
+package enrich
 
 import (
 	"encoding/json"
@@ -11,8 +11,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-const abuseipdb_root = "https://api.abuseipdb.com/api/v2/"
-const abuseipdb = "abuseipdb_api_key"
+const (
+	abuseipdb_root = "https://api.abuseipdb.com/api/v2/"
+	abuseipdb      = "abuseipdb_api_key"
+)
 
 type Reports struct {
 	ReportedAt          time.Time `json:"reportedAt"`
@@ -46,14 +48,15 @@ type AbuseIpDbResponse struct {
 	Data RootData `json:"data"`
 }
 
-// getApiKey
-func getApiKey() string {
-	return viper.GetString(abuseipdb)
+type AbuseIPClient struct {
+	// probably some channel to not be gated by HTTP lag
 }
 
-// CheckIP will call the AbuseIPdb service to get information about a specific
-// IP address
-func CheckIP(ip string) {
+func NewAbuseIPClient() *AbuseIPClient {
+	return &AbuseIPClient{}
+}
+
+func (c *AbuseIPClient) Lookup(ip string) {
 	checkUrl := fmt.Sprintf("%s%s", abuseipdb_root, "check")
 	rawUrl, err := url.Parse(checkUrl)
 	if err != nil {
@@ -93,5 +96,9 @@ func CheckIP(ip string) {
 	}
 
 	fmt.Printf("%+v\n", abuseIpDbResponse)
+}
 
+// getApiKey gets the API key from the viper config
+func getApiKey() string {
+	return viper.GetString(abuseipdb)
 }

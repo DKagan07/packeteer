@@ -1,9 +1,8 @@
-package api
+package enrich
 
 import (
 	"testing"
 )
 
-func TestCheck(t *testing.T) {
-	CheckIP("192.168.1.1")
+func TestLookup(t *testing.T) {
 }
